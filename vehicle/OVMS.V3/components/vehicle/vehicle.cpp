@@ -1304,7 +1304,7 @@ void OvmsVehicle::VehicleTicker1(std::string event, void* data)
     }
 
   // Idle alert:
-  if (!StdMetrics.ms_v_env_awake->AsBool() || StdMetrics.ms_v_pos_speed->AsFloat() > 0)
+  if (!StdMetrics.ms_v_env_awake->AsBool() || StdMetrics.ms_v_pos_speed->AsFloat() > 0 || StdMetrics.ms_v_charge_inprogress->AsBool())
     {
     m_idle_ticker = 15 * 60; // first alert after 15 minutes
     }
