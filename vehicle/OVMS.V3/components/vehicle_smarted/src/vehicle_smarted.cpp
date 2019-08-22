@@ -46,6 +46,7 @@ static const char *TAG = "v-smarted";
 #include "metrics_standard.h"
 #include "ovms_notify.h"
 #include "ovms_peripherals.h"
+#include "ovms_location.h"
 
 #include "vehicle_smarted.h"
 
@@ -111,6 +112,7 @@ OvmsVehicleSmartED::OvmsVehicleSmartED() {
     // init commands:
     cmd_xse = MyCommandApp.RegisterCommand("xse","SmartED 451 Gen.3");
     cmd_xse->RegisterCommand("recu","Set recu..", xse_recu, "<up/down>",1,1);
+    cmd_xse->RegisterCommand("osm", "test", xse_osm);
     
     // BMS configuration:
     BmsSetCellArrangementVoltage(93, 1);
@@ -656,6 +658,10 @@ void OvmsVehicleSmartED::Ticker1(uint32_t ticker) {
   HandleEnergy();
   if (StandardMetrics.ms_v_env_awake->AsBool())
     HandleChargingStatus();
+  if ((ticker % 3) == 0) {
+    if (StandardMetrics.ms_v_env_on->AsBool())
+      ESP_LOGD(TAG, "Lat: %0.6f, Lon: %0.6f, Speed: %.2f, MaxSpeed: %d", MyLocations.m_latitude, MyLocations.m_longitude, StandardMetrics.ms_v_pos_speed->AsFloat(), GetOsmSpeed());
+  }
 }
 
 void OvmsVehicleSmartED::Ticker10(uint32_t ticker) {

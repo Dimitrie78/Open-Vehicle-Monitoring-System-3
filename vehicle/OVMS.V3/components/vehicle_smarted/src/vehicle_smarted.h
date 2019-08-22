@@ -49,6 +49,7 @@
 using namespace std;
 
 void xse_recu(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
+void xse_osm(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
 
 class OvmsVehicleSmartED : public OvmsVehicle
 {
@@ -158,6 +159,8 @@ class OvmsVehicleSmartED : public OvmsVehicle
     #define CELLCOUNT 93
     #define SE_CANDATA_TIMEOUT 10
     
+  public:
+    int GetOsmSpeed();
 };
 
 #endif //#ifndef __VEHICLE_SMARTED_H__
