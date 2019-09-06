@@ -89,6 +89,7 @@ class OvmsVehicleSmartED : public OvmsVehicle
 #endif
     
   protected:
+    int m_reboot_ticker;
     virtual void Ticker1(uint32_t ticker);
     virtual void Ticker10(uint32_t ticker);
     virtual void Ticker60(uint32_t ticker);
@@ -96,6 +97,8 @@ class OvmsVehicleSmartED : public OvmsVehicle
     void vehicle_smarted_car_on(bool isOn);
     TimerHandle_t m_locking_timer;
     
+    void SaveStatus();
+    void RestoreStatus();
     void HandleCharging();
     void HandleEnergy();
     int  calcMinutesRemaining(float target, float charge_voltage, float charge_current);
@@ -136,6 +139,7 @@ class OvmsVehicleSmartED : public OvmsVehicle
     bool m_soc_rsoc;                        // Display SOC=SOC or rSOC=SOC
     bool m_enable_write;                    // canwrite
     bool m_lock_state;                      // Door lock/unlock state
+    int m_reboot_time;                      // Reboot time
 
   protected:
     char NLG6_PN_HW[11] = "4519822221";           //!< Part number for NLG6 fast charging hardware

@@ -46,6 +46,7 @@ static const char *TAG = "v-smarted";
 #include "metrics_standard.h"
 #include "ovms_notify.h"
 #include "ovms_peripherals.h"
+#include "ovms_boot.h"
 
 #include "vehicle_smarted.h"
 
@@ -124,6 +125,8 @@ OvmsVehicleSmartED::OvmsVehicleSmartED() {
     BmsSetCellDefaultThresholdsVoltage(0.020, 0.030);
     BmsSetCellDefaultThresholdsTemperature(2.0, 3.0);
     
+    RestoreStatus();
+    
     RegisterCanBus(1, CAN_MODE_ACTIVE, CAN_SPEED_500KBPS);
     RegisterCanBus(2, CAN_MODE_ACTIVE, CAN_SPEED_500KBPS);
     PollSetPidList(m_can1,obdii_polls);
@@ -166,6 +169,8 @@ void OvmsVehicleSmartED::ConfigChanged(OvmsConfigParam* param) {
     m_enable_write    = MyConfig.GetParamValueBool("xse", "canwrite", false);
     m_lock_state      = MyConfig.GetParamValueBool("xse", "lockstate", false);
     
+    m_reboot_time     = MyConfig.GetParamValueInt("xse", "reboot", 0);
+    
     StandardMetrics.ms_v_charge_limit_soc->SetValue((float) MyConfig.GetParamValueInt("xse", "suffsoc", 0), Percentage );
     StandardMetrics.ms_v_charge_limit_range->SetValue((float) MyConfig.GetParamValueInt("xse", "suffrange", 0), Kilometers );
 
@@ -191,6 +196,7 @@ void OvmsVehicleSmartED::vehicle_smarted_car_on(bool isOn) {
     // Log once that car is being turned off
     ESP_LOGI(TAG,"CAR IS OFF");
     if (m_enable_write) PollSetState(1);
+    SaveStatus();
   }
 
   // Always set this value to prevent it from going stale
@@ -668,6 +674,15 @@ void OvmsVehicleSmartED::Ticker1(uint32_t ticker) {
   }
   if (StandardMetrics.ms_v_env_on->AsBool() && StandardMetrics.ms_v_pos_odometer->AsFloat(0) > 0.0 && mt_pos_odometer_start->AsFloat(0) > 0.0) {
     StandardMetrics.ms_v_pos_trip->SetValue(StandardMetrics.ms_v_pos_odometer->AsFloat(0) - mt_pos_odometer_start->AsFloat(0));
+  }
+  
+  // Handle v2Server connection
+  if (StandardMetrics.ms_s_v2_connected->AsBool() || m_reboot_time == 0) {
+    m_reboot_ticker = m_reboot_time * 60; // set reboot ticker
+  }
+  else if (m_reboot_ticker > 0 && --m_reboot_ticker == 0) {
+    SaveStatus();
+    MyBoot.Restart(); // restart Module
   }
 }
 
