@@ -977,12 +977,14 @@ void OvmsVehicleRenaultZoe::IncomingPEB(canbus* bus, uint16_t type, uint16_t pid
 void OvmsVehicleRenaultZoe::car_on(bool isOn) {
   if (isOn && !StandardMetrics.ms_v_env_on->AsBool()) {
 		// Car is beeing turned ON
+    ESP_LOGI(TAG,"CAR IS ON");
 		StandardMetrics.ms_v_env_on->SetValue(isOn);
 		//StandardMetrics.ms_v_env_awake->SetValue(isOn);
     if (m_enable_write) POLLSTATE_RUNNING;
   }
   else if(!isOn && StandardMetrics.ms_v_env_on->AsBool()) {
     // Car is being turned OFF
+    ESP_LOGI(TAG,"CAR IS OFF");
     POLLSTATE_ON;
 		StandardMetrics.ms_v_env_on->SetValue( isOn );
 		//StandardMetrics.ms_v_env_awake->SetValue( isOn );
@@ -1000,6 +1002,15 @@ void OvmsVehicleRenaultZoe::Ticker1(uint32_t ticker) {
       m_candata_poll = 0;
       POLLSTATE_OFF;
     }
+  }
+  
+  // Handle 12V Charge
+  if (StandardMetrics.ms_v_bat_12v_voltage->AsFloat(0) > 13.5 && !StandardMetrics.ms_v_env_charging12v->AsBool()) {
+    ESP_LOGI(TAG,"Start Charging 12V");
+    StandardMetrics.ms_v_env_charging12v->SetValue(true);
+  } else if (StandardMetrics.ms_v_env_charging12v->AsBool()) {
+    ESP_LOGI(TAG,"Stop Charging 12V");
+    StandardMetrics.ms_v_env_charging12v->SetValue(false);
   }
   
   // Handle Tripcounter
@@ -1087,6 +1098,7 @@ void OvmsVehicleRenaultZoe::ConfigChanged(OvmsConfigParam* param) {
   m_enable_write      = MyConfig.GetParamValueBool("xrz", "canwrite", false);
   m_range_ideal       = MyConfig.GetParamValueInt("xrz", "rangeideal", 160);
   m_battery_capacity  = MyConfig.GetParamValueInt("xrz", "battcapacity", 27000);
+  m_enable_egpio      = MyConfig.GetParamValueBool("xrz", "enable_egpio", false);
   
   StandardMetrics.ms_v_charge_limit_soc->SetValue((float) MyConfig.GetParamValueInt("xrz", "suffsoc", 0), Percentage );
   StandardMetrics.ms_v_charge_limit_range->SetValue((float) MyConfig.GetParamValueInt("xrz", "suffrange", 0), Kilometers );

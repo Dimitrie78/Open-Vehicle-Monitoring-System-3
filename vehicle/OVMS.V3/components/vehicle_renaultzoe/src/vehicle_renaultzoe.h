@@ -98,12 +98,24 @@ class OvmsVehicleRenaultZoe : public OvmsVehicle {
     void ConfigChanged(OvmsConfigParam* param);
     bool SetFeature(int key, const char* value);
     const std::string GetFeature(int key);
+  
+  public:
+    //virtual vehicle_command_t CommandSetChargeCurrent(uint16_t limit);
+    //virtual vehicle_command_t CommandStat(int verbosity, OvmsWriter* writer);
+    virtual vehicle_command_t CommandWakeup();
+    virtual vehicle_command_t CommandClimateControl(bool enable);
+    virtual vehicle_command_t CommandLock(const char* pin);
+    virtual vehicle_command_t CommandUnlock(const char* pin);
+    virtual vehicle_command_t CommandHomelink(int button, int durationms=1000);
+    virtual vehicle_command_t CommandActivateValet(const char* pin);
+    virtual vehicle_command_t CommandDeactivateValet(const char* pin);
 
   protected:
     bool m_enable_write;                    // canwrite
     char zoe_vin[8] = "";                   // last 7 digits of full VIN
     int m_range_ideal;                      // … Range Ideal (default 160 km)
     int m_battery_capacity;                 // Battery Capacity (default 27000)
+    bool m_enable_egpio;                    // enable EGPIO for Homelink commands
 
   private:
     unsigned int m_candata_timer;
