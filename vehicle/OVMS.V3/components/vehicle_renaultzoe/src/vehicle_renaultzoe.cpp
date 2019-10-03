@@ -1004,11 +1004,13 @@ void OvmsVehicleRenaultZoe::Ticker1(uint32_t ticker) {
     }
   }
   
-  // Handle 12V Charge
-  if (StandardMetrics.ms_v_bat_12v_voltage->AsFloat(0) > 13.5 && !StandardMetrics.ms_v_env_charging12v->AsBool()) {
+  // Handle 12Vcharging
+  float b12v_volt = StandardMetrics.ms_v_bat_12v_voltage->AsFloat(0);
+  if (b12v_volt > 13.5 && !StandardMetrics.ms_v_env_charging12v->AsBool()) {
     ESP_LOGI(TAG,"Start Charging 12V");
     StandardMetrics.ms_v_env_charging12v->SetValue(true);
-  } else if (StandardMetrics.ms_v_env_charging12v->AsBool()) {
+  } 
+  if (b12v_volt < 13.5 && StandardMetrics.ms_v_env_charging12v->AsBool()) {
     ESP_LOGI(TAG,"Stop Charging 12V");
     StandardMetrics.ms_v_env_charging12v->SetValue(false);
   }
