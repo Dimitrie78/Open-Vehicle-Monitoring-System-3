@@ -1236,22 +1236,7 @@ void OvmsVehicle::VehicleTicker1(std::string event, void* data)
   CalculateEfficiency();
 
   // 12V battery monitor:
-  if (StandardMetrics.ms_v_env_charging12v->AsBool() == true)
-    {
-    // add two seconds calmdown per second charging, max 15 minutes:
-    if (m_12v_ticker < 15*60)
-      m_12v_ticker += 2;
-    }
-  else if (m_12v_ticker > 0)
-    {
-    --m_12v_ticker;
-    if (m_12v_ticker == 0)
-      {
-      // take 12V reference voltage:
-      StandardMetrics.ms_v_bat_12v_voltage_ref->SetValue(StandardMetrics.ms_v_bat_12v_voltage->AsFloat());
-      }
-    }
-  else if ((m_ticker % 60) == 0)
+  if ((m_ticker % 60) == 0)
     {
     // check 12V voltage:
     float volt = StandardMetrics.ms_v_bat_12v_voltage->AsFloat();
