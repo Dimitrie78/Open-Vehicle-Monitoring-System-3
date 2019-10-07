@@ -120,6 +120,7 @@ class OvmsVehicleSmartED : public OvmsVehicle
     OvmsMetricInt *mt_trip_reset;               // trip since Reset
     OvmsMetricBool *mt_hv_active;               // HV active
     OvmsMetricBool *mt_c_active;                // charge active
+    OvmsMetricBool *mt_bus_awake;               // can-bus aktiv
     OvmsMetricFloat *mt_bat_energy_used_start;  // display enery used/100km
     OvmsMetricFloat *mt_bat_energy_used_reset;  // display enery used/100km
     OvmsMetricFloat *mt_pos_odometer_start;     // ODOmeter at Start
@@ -139,6 +140,7 @@ class OvmsVehicleSmartED : public OvmsVehicle
     bool m_soc_rsoc;                        // Display SOC=SOC or rSOC=SOC
     bool m_enable_write;                    // canwrite
     bool m_lock_state;                      // Door lock/unlock state
+    bool m_reset_trip;                      // Reset trip when charging else when env on
     int m_reboot_time;                      // Reboot time
 
   protected:
