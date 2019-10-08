@@ -94,7 +94,8 @@ OvmsVehicleRenaultZoe::OvmsVehicleRenaultZoe() {
   ConfigChanged(NULL);
   
   // init metrics:
-  mt_pos_odometer_start    = MyMetrics.InitFloat("xrz.v.pos.odometer.start", SM_STALE_MID, 0, Kilometers);
+  mt_pos_odometer_start   = MyMetrics.InitFloat("xrz.v.pos.odometer.start", SM_STALE_MID, 0, Kilometers);
+  mt_bus_awake            = MyMetrics.InitBool("xrz.v.bus.awake", SM_STALE_MIN, false);
   
 #ifdef CONFIG_OVMS_COMP_WEBSERVER
   WebInit();
@@ -118,7 +119,8 @@ void OvmsVehicleRenaultZoe::IncomingFrameCan1(CAN_frame_t* p_frame) {
   
   if (m_candata_poll != 1 && m_ready) {
     ESP_LOGI(TAG,"Car has woken (CAN bus activity)");
-    StandardMetrics.ms_v_env_awake->SetValue(true);
+    mt_bus_awake->SetValue(true);
+    //StandardMetrics.ms_v_env_awake->SetValue(true);
     m_candata_poll = 1;
     if (m_enable_write) POLLSTATE_ON;
   }
@@ -979,7 +981,7 @@ void OvmsVehicleRenaultZoe::car_on(bool isOn) {
 		// Car is beeing turned ON
     ESP_LOGI(TAG,"CAR IS ON");
 		StandardMetrics.ms_v_env_on->SetValue(isOn);
-		//StandardMetrics.ms_v_env_awake->SetValue(isOn);
+		StandardMetrics.ms_v_env_awake->SetValue(isOn);
     if (m_enable_write) POLLSTATE_RUNNING;
   }
   else if(!isOn && StandardMetrics.ms_v_env_on->AsBool()) {
@@ -987,7 +989,7 @@ void OvmsVehicleRenaultZoe::car_on(bool isOn) {
     ESP_LOGI(TAG,"CAR IS OFF");
     POLLSTATE_ON;
 		StandardMetrics.ms_v_env_on->SetValue( isOn );
-		//StandardMetrics.ms_v_env_awake->SetValue( isOn );
+		StandardMetrics.ms_v_env_awake->SetValue( isOn );
 		StandardMetrics.ms_v_pos_speed->SetValue( 0 );
   }
 }
@@ -997,7 +999,8 @@ void OvmsVehicleRenaultZoe::Ticker1(uint32_t ticker) {
     if (--m_candata_timer == 0) {
       // Car has gone to sleep
       ESP_LOGI(TAG,"Car has gone to sleep (CAN bus timeout)");
-      StandardMetrics.ms_v_env_awake->SetValue(false);
+      mt_bus_awake->SetValue(false);
+      //StandardMetrics.ms_v_env_awake->SetValue(false);
       StandardMetrics.ms_v_bat_12v_current->SetValue(0);
       m_candata_poll = 0;
       POLLSTATE_OFF;

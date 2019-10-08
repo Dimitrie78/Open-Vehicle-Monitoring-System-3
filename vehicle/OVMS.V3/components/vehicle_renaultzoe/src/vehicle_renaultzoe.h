@@ -89,6 +89,7 @@ class OvmsVehicleRenaultZoe : public OvmsVehicle {
     
     // Renault ZOE specific metrics
     OvmsMetricFloat  *mt_pos_odometer_start;  // ODOmeter at Start
+    OvmsMetricBool   *mt_bus_awake;           // can-bus awake status
 
   public:
     void WebInit();
