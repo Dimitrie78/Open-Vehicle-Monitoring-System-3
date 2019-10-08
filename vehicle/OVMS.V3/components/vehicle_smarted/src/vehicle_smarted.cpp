@@ -88,19 +88,17 @@ OvmsVehicleSmartED::OvmsVehicleSmartED() {
     mt_nlg6_present             = MyMetrics.InitBool("xse.v.nlg6.present", SM_STALE_MIN, false);
     mt_nlg6_main_volts          = new OvmsMetricVector<float>("xse.v.nlg6.main.volts", SM_STALE_HIGH, Volts);
     mt_nlg6_main_amps           = new OvmsMetricVector<float>("xse.v.nlg6.main.amps", SM_STALE_HIGH, Amps);
-    mt_nlg6_amps_setpoint       = MyMetrics.InitFloat("xse.v.nlg6.amps.setpoint", SM_STALE_MIN, Amps);
-    mt_nlg6_amps_cablecode      = MyMetrics.InitFloat("xse.v.nlg6.amps.cablecode", SM_STALE_MIN, Amps);
-    mt_nlg6_amps_chargingpoint  = MyMetrics.InitFloat("xse.v.nlg6.amps.chargingpoint", SM_STALE_MIN, Amps);
-    mt_nlg6_dc_current          = MyMetrics.InitFloat("xse.v.nlg6.dc.current", SM_STALE_MIN, Volts);
-    mt_nlg6_dc_hv               = MyMetrics.InitFloat("xse.v.nlg6.dc.hv", SM_STALE_MIN, Volts);
-    mt_nlg6_dc_lv               = MyMetrics.InitFloat("xse.v.nlg6.dc.lv", SM_STALE_MIN, Volts);
+    mt_nlg6_amps_setpoint       = MyMetrics.InitFloat("xse.v.nlg6.amps.setpoint", SM_STALE_MIN, 0, Amps);
+    mt_nlg6_amps_cablecode      = MyMetrics.InitFloat("xse.v.nlg6.amps.cablecode", SM_STALE_MIN, 0, Amps);
+    mt_nlg6_amps_chargingpoint  = MyMetrics.InitFloat("xse.v.nlg6.amps.chargingpoint", SM_STALE_MIN, 0, Amps);
+    mt_nlg6_dc_current          = MyMetrics.InitFloat("xse.v.nlg6.dc.current", SM_STALE_MIN, 0, Volts);
+    mt_nlg6_dc_hv               = MyMetrics.InitFloat("xse.v.nlg6.dc.hv", SM_STALE_MIN, 0, Volts);
+    mt_nlg6_dc_lv               = MyMetrics.InitFloat("xse.v.nlg6.dc.lv", SM_STALE_MIN, 0, Volts);
     mt_nlg6_temps               = new OvmsMetricVector<float>("xse.v.nlg6.temps", SM_STALE_HIGH, Celcius);
-    mt_nlg6_temp_reported       = MyMetrics.InitFloat("xse.v.nlg6.temp.reported", SM_STALE_MIN, Celcius);
-    mt_nlg6_temp_socket         = MyMetrics.InitFloat("xse.v.nlg6.temp.socket", SM_STALE_MIN, Celcius);
-    mt_nlg6_temp_coolingplate   = MyMetrics.InitFloat("xse.v.nlg6.temp.coolingplate", SM_STALE_MIN, Celcius);
+    mt_nlg6_temp_reported       = MyMetrics.InitFloat("xse.v.nlg6.temp.reported", SM_STALE_MIN, 0, Celcius);
+    mt_nlg6_temp_socket         = MyMetrics.InitFloat("xse.v.nlg6.temp.socket", SM_STALE_MIN, 0, Celcius);
+    mt_nlg6_temp_coolingplate   = MyMetrics.InitFloat("xse.v.nlg6.temp.coolingplate", SM_STALE_MIN, 0, Celcius);
     mt_nlg6_pn_hw               = MyMetrics.InitString("xse.v.nlg6.pn.hw", SM_STALE_MIN, 0);
-    
-    mt_pos_odometer_start->SetValue(0);
 
     m_doorlock_port     = 9;
     m_doorunlock_port   = 8;
