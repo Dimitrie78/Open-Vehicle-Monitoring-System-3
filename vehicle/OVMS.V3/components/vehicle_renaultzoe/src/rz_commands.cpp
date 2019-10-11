@@ -30,8 +30,8 @@
 ; THE SOFTWARE.
 */
 
-//#include "ovms_log.h"
-//static const char *TAG = "v-zoe";
+#include "ovms_log.h"
+static const char *TAG = "v-zoe";
 
 #include <stdio.h>
 #include <string>
@@ -52,7 +52,23 @@ OvmsVehicle::vehicle_command_t OvmsVehicleRenaultZoe::CommandClimateControl(bool
 }
 
 OvmsVehicle::vehicle_command_t OvmsVehicleRenaultZoe::CommandWakeup() {
-  return NotImplemented;
+  if(!m_enable_write)
+    return Fail;
+  
+  ESP_LOGI(TAG, "Send Wakeup Command");
+  
+  CAN_frame_t frame;
+  memset(&frame, 0, sizeof(frame));
+
+  frame.origin = m_can2;
+  frame.FIR.U = 0;
+  frame.FIR.B.DLC = 1;
+  frame.FIR.B.FF = CAN_frame_std;
+  frame.MsgID = 0x218;
+  frame.data.u8[0] = 0xc9;
+  m_can1->Write(&frame);
+
+  return Success;
 }
 
 OvmsVehicle::vehicle_command_t OvmsVehicleRenaultZoe::CommandLock(const char* pin) {
