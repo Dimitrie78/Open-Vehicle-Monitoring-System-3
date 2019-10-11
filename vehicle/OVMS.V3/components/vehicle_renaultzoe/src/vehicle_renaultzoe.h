@@ -117,6 +117,7 @@ class OvmsVehicleRenaultZoe : public OvmsVehicle {
     int m_range_ideal;                      // … Range Ideal (default 160 km)
     int m_battery_capacity;                 // Battery Capacity (default 27000)
     bool m_enable_egpio;                    // enable EGPIO for Homelink commands
+    int m_reboot_ticker;
 
   private:
     unsigned int m_candata_timer;

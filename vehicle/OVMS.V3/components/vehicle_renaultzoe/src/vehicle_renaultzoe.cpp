@@ -44,6 +44,7 @@ static const char *TAG = "v-zoe";
 #include "metrics_standard.h"
 #include "ovms_notify.h"
 #include "ovms_peripherals.h"
+#include "ovms_netmanager.h"
 
 #include "vehicle_renaultzoe.h"
 
@@ -1024,6 +1025,16 @@ void OvmsVehicleRenaultZoe::Ticker1(uint32_t ticker) {
   }
   if (StandardMetrics.ms_v_env_on->AsBool() && StandardMetrics.ms_v_pos_odometer->AsFloat(0) > 0.0 && mt_pos_odometer_start->AsFloat(0) > 0.0) {
     StandardMetrics.ms_v_pos_trip->SetValue(StandardMetrics.ms_v_pos_odometer->AsFloat(0) - mt_pos_odometer_start->AsFloat(0));
+  }
+  
+  // Handle v2Server connection
+  if (StandardMetrics.ms_s_v2_connected->AsBool()) {
+    m_reboot_ticker = 5 * 60; // set reboot ticker
+  }
+  else if (m_reboot_ticker > 0 && --m_reboot_ticker == 0) {
+    MyNetManager.RestartNetwork();
+    m_reboot_ticker = 5 * 60;
+    //MyBoot.Restart(); // restart Module
   }
 }
 
