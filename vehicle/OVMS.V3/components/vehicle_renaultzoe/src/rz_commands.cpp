@@ -47,6 +47,14 @@ static const char *TAG = "v-zoe";
 
 #include "vehicle_renaultzoe.h"
 
+void OvmsVehicleRenaultZoe::zoe_trip(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv) {
+  OvmsVehicleRenaultZoe* zoe = GetInstance(writer);
+  if (!zoe)
+    return;
+	
+  zoe->CommandTrip(verbosity, writer);
+}
+
 OvmsVehicle::vehicle_command_t OvmsVehicleRenaultZoe::CommandClimateControl(bool climatecontrolon) {
   return NotImplemented;
 }
@@ -111,4 +119,20 @@ OvmsVehicle::vehicle_command_t OvmsVehicleRenaultZoe::CommandHomelink(int button
   }
 #endif
   return NotImplemented;
+}
+
+OvmsVehicle::vehicle_command_t OvmsVehicleRenaultZoe::CommandTrip(int verbosity, OvmsWriter* writer) {
+	metric_unit_t rangeUnit = (MyConfig.GetParamValue("vehicle", "units.distance") == "M") ? Miles : Kilometers;
+	
+	writer->printf("Driven: %s\n", (char*) StdMetrics.ms_v_pos_trip->AsUnitString("-", rangeUnit, 1).c_str());
+	writer->printf("Energy used: %s\n", (char*) StdMetrics.ms_v_bat_energy_used->AsUnitString("-", Native, 3).c_str());
+	writer->printf("Energy recd: %s\n", (char*) StdMetrics.ms_v_bat_energy_recd->AsUnitString("-", Native, 3).c_str());
+	
+	return Success;
+}
+
+void OvmsVehicleRenaultZoe::NotifyTrip() {
+  StringWriter buf(200);
+  CommandTrip(COMMAND_RESULT_NORMAL, &buf);
+  MyNotify.NotifyString("info","xrz.trip",buf.c_str());
 }

@@ -66,16 +66,17 @@
 
 using namespace std;
 
-
 class OvmsVehicleRenaultZoe : public OvmsVehicle {
 
   public:
     OvmsVehicleRenaultZoe();
     ~OvmsVehicleRenaultZoe();
+		static OvmsVehicleRenaultZoe* GetInstance(OvmsWriter* writer=NULL);
 		void IncomingFrameCan1(CAN_frame_t* p_frame);
 		void IncomingPollReply(canbus* bus, uint16_t type, uint16_t pid, uint8_t* data, uint8_t length, uint16_t remain);
 
 	protected:
+		void IncomingEPS(canbus* bus, uint16_t type, uint16_t pid, uint8_t* data, uint8_t length, uint16_t remain);
 		void IncomingEVC(canbus* bus, uint16_t type, uint16_t pid, uint8_t* data, uint8_t length, uint16_t remain);
 		void IncomingBCB(canbus* bus, uint16_t type, uint16_t pid, uint8_t* data, uint8_t length, uint16_t remain);
 		void IncomingLBC(canbus* bus, uint16_t type, uint16_t pid, uint8_t* data, uint8_t length, uint16_t remain);
@@ -85,6 +86,7 @@ class OvmsVehicleRenaultZoe : public OvmsVehicle {
     virtual void Ticker1(uint32_t ticker);
     virtual void Ticker10(uint32_t ticker);
     void HandleCharging();
+    void HandleEnergy();
     int calcMinutesRemaining(float target, float charge_voltage, float charge_current);
     
     // Renault ZOE specific metrics
@@ -110,6 +112,8 @@ class OvmsVehicleRenaultZoe : public OvmsVehicle {
     virtual vehicle_command_t CommandHomelink(int button, int durationms=1000);
     virtual vehicle_command_t CommandActivateValet(const char* pin);
     virtual vehicle_command_t CommandDeactivateValet(const char* pin);
+    virtual vehicle_command_t CommandTrip(int verbosity, OvmsWriter* writer);
+		void NotifyTrip();
 
   protected:
     bool m_enable_write;                    // canwrite
@@ -117,11 +121,15 @@ class OvmsVehicleRenaultZoe : public OvmsVehicle {
     int m_range_ideal;                      // … Range Ideal (default 160 km)
     int m_battery_capacity;                 // Battery Capacity (default 27000)
     bool m_enable_egpio;                    // enable EGPIO for Homelink commands
+    bool m_reset_trip;                      // Reset trip when charging else when env on
     int m_reboot_ticker;
 
   private:
     unsigned int m_candata_timer;
     unsigned int m_candata_poll;
+		
+	public:
+		static void zoe_trip(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
 };
 
 #endif //#ifndef __VEHICLE_RENAUTZOE_H__
