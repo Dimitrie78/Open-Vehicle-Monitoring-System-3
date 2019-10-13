@@ -111,8 +111,9 @@ OvmsVehicleRenaultZoe::OvmsVehicleRenaultZoe() {
   mt_bus_awake            = MyMetrics.InitBool("xrz.v.bus.awake", SM_STALE_MIN, false);
 	
 	// init commands:
-  //cmd_xrz = MyCommandApp.RegisterCommand("xrz","Renault Zoe");
-	MyCommandApp.RegisterCommand("trip", "Show vehicle trip", zoe_trip);
+  cmd_zoe = MyCommandApp.RegisterCommand("zoe", "Renault Zoe");
+	cmd_zoe->RegisterCommand("trip", "Show vehicle trip", zoe_trip);
+	//MyCommandApp.RegisterCommand("trip", "Show vehicle trip", zoe_trip);
   
 #ifdef CONFIG_OVMS_COMP_WEBSERVER
   WebInit();

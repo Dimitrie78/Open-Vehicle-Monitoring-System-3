@@ -89,6 +89,8 @@ class OvmsVehicleRenaultZoe : public OvmsVehicle {
     void HandleEnergy();
     int calcMinutesRemaining(float target, float charge_voltage, float charge_current);
     
+		OvmsCommand *cmd_zoe;
+		
     // Renault ZOE specific metrics
     OvmsMetricFloat  *mt_pos_odometer_start;  // ODOmeter at Start
     OvmsMetricBool   *mt_bus_awake;           // can-bus awake status
