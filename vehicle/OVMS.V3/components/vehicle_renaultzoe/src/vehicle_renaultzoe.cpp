@@ -1042,7 +1042,8 @@ void OvmsVehicleRenaultZoe::car_on(bool isOn) {
 		StandardMetrics.ms_v_env_on->SetValue( isOn );
 		StandardMetrics.ms_v_env_awake->SetValue( isOn );
 		StandardMetrics.ms_v_pos_speed->SetValue( 0 );
-		NotifyTrip();
+		if (StandardMetrics.ms_v_pos_trip->AsFloat(0) > 0.1)
+			NotifyTrip();
   }
 }
 
