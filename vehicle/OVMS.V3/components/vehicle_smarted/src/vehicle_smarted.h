@@ -48,14 +48,12 @@
 
 using namespace std;
 
-void xse_recu(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
-void xse_chargetimer(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
-
 class OvmsVehicleSmartED : public OvmsVehicle
 {
   public:
     OvmsVehicleSmartED();
     ~OvmsVehicleSmartED();
+    static OvmsVehicleSmartED* GetInstance(OvmsWriter* writer=NULL);
 
   public:
     void IncomingFrameCan1(CAN_frame_t* p_frame);
@@ -78,7 +76,6 @@ class OvmsVehicleSmartED : public OvmsVehicle
     virtual vehicle_command_t CommandSetChargeCurrent(uint16_t limit);
     virtual vehicle_command_t CommandStat(int verbosity, OvmsWriter* writer);
     virtual vehicle_command_t CommandWakeup();
-#ifdef CONFIG_OVMS_COMP_MAX7317
     virtual vehicle_command_t CommandSetChargeTimer(bool timeron, int hours, int minutes);
     virtual vehicle_command_t CommandClimateControl(bool enable);
     virtual vehicle_command_t CommandLock(const char* pin);
@@ -86,8 +83,13 @@ class OvmsVehicleSmartED : public OvmsVehicle
     virtual vehicle_command_t CommandHomelink(int button, int durationms=1000);
     virtual vehicle_command_t CommandActivateValet(const char* pin);
     virtual vehicle_command_t CommandDeactivateValet(const char* pin);
-#endif
-    
+    virtual vehicle_command_t CommandTrip(int verbosity, OvmsWriter* writer);
+
+  public:
+    static void xse_recu(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
+    static void xse_chargetimer(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
+    static void xse_trip(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
+
   protected:
     int m_reboot_ticker;
     virtual void Ticker1(uint32_t ticker);
@@ -97,6 +99,9 @@ class OvmsVehicleSmartED : public OvmsVehicle
     void vehicle_smarted_car_on(bool isOn);
     TimerHandle_t m_locking_timer;
     
+    void NotifyTrip();
+    void NotifyValetEnabled();
+    void NotifyValetDisabled();
     void SaveStatus();
     void RestoreStatus();
     void HandleCharging();
@@ -159,7 +164,7 @@ class OvmsVehicleSmartED : public OvmsVehicle
     OvmsMetricFloat *mt_nlg6_temp_socket;         //!< temperature of mains socket charger
     OvmsMetricFloat *mt_nlg6_temp_coolingplate;   //!< temperature of cooling plate 
     OvmsMetricString *mt_nlg6_pn_hw;              //!< Part number of base hardware (wo revisioning)
-    
+
     #define DEFAULT_BATTERY_CAPACITY 17600
     #define DEFAULT_BATTERY_AMPHOURS 53
     #define MAX_POLL_DATA_LEN 238
