@@ -115,6 +115,7 @@ class OvmsVehicleRenaultZoe : public OvmsVehicle {
     virtual vehicle_command_t CommandActivateValet(const char* pin);
     virtual vehicle_command_t CommandDeactivateValet(const char* pin);
     virtual vehicle_command_t CommandTrip(int verbosity, OvmsWriter* writer);
+    virtual vehicle_command_t CommandStat(int verbosity, OvmsWriter* writer);
 		void NotifyTrip();
 
   protected:
