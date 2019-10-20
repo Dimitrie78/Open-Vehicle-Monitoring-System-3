@@ -1258,7 +1258,7 @@ void OvmsVehicle::VehicleTicker1(std::string event, void* data)
     if (m_12v_ticker == 0)
       {
       // take 12V reference voltage:
-      StandardMetrics.ms_v_bat_12v_voltage_ref->SetValue(StandardMetrics.ms_v_bat_12v_voltage->AsFloat());
+      //StandardMetrics.ms_v_bat_12v_voltage_ref->SetValue(StandardMetrics.ms_v_bat_12v_voltage->AsFloat());
       }
     }
 
