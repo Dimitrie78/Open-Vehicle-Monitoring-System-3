@@ -160,6 +160,9 @@ class OvmsVehicle : public InternalRamAllocated
     virtual bool SetBrakelight(int on);     // … hardware control method (override for non MAX7317 control)
 
   protected:
+    bool m_12v_ref_autoset;                 // disabel/enable set 12v ref when charging 12v
+
+  protected:
     uint32_t m_ticker;
     int m_12v_ticker;
     int m_chargestate_ticker;
