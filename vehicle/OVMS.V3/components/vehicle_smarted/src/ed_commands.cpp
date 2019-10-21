@@ -126,6 +126,8 @@ bool OvmsVehicleSmartED::CommandSetRecu(bool on) {
   frame.MsgID = 0x236;
   frame.data.u8[0] = (on == true ? 0x02 : 0x04);
   frame.Write();
+  vTaskDelay(50 / portTICK_PERIOD_MS);
+  frame.Write();
 
   return true;
 }
