@@ -40,6 +40,7 @@
 #include "ovms_metrics.h"
 #include "ovms_command.h"
 #include "metrics_standard.h"
+#include "ovms_mutex.h"
 
 using namespace std;
 struct DashboardConfig;
@@ -118,6 +119,7 @@ class OvmsVehicle : public InternalRamAllocated
     canbus* m_can1;
     canbus* m_can2;
     canbus* m_can3;
+    canbus* m_can4;
 
   private:
     void VehicleTicker1(std::string event, void* data);
@@ -129,6 +131,7 @@ class OvmsVehicle : public InternalRamAllocated
     virtual void IncomingFrameCan1(CAN_frame_t* p_frame);
     virtual void IncomingFrameCan2(CAN_frame_t* p_frame);
     virtual void IncomingFrameCan3(CAN_frame_t* p_frame);
+    virtual void IncomingFrameCan4(CAN_frame_t* p_frame);
     virtual void IncomingPollReply(canbus* bus, uint16_t type, uint16_t pid, uint8_t* data, uint8_t length, uint16_t mlremain);
 
   protected:
@@ -280,6 +283,7 @@ class OvmsVehicle : public InternalRamAllocated
       } poll_pid_t;
 
   protected:
+    OvmsMutex         m_poll_mutex;           // Concurrency protection
     uint8_t           m_poll_state;           // Current poll state
     canbus*           m_poll_bus;             // Bus to poll on
     const poll_pid_t* m_poll_plist;           // Head of poll list

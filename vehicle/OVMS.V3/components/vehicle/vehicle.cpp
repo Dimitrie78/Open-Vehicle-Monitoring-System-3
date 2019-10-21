@@ -945,6 +945,8 @@ OvmsVehicle::OvmsVehicle()
   m_can1 = NULL;
   m_can2 = NULL;
   m_can3 = NULL;
+  m_can4 = NULL;
+
   m_ticker = 0;
   m_12v_ticker = 0;
   m_chargestate_ticker = 0;
@@ -1022,7 +1024,7 @@ OvmsVehicle::OvmsVehicle()
 
   m_rxqueue = xQueueCreate(CONFIG_OVMS_VEHICLE_CAN_RX_QUEUE_SIZE,sizeof(CAN_frame_t));
   xTaskCreatePinnedToCore(OvmsVehicleRxTask, "OVMS Vehicle",
-    CONFIG_OVMS_VEHICLE_RXTASK_STACK, (void*)this, 10, &m_rxtask, 1);
+    CONFIG_OVMS_VEHICLE_RXTASK_STACK, (void*)this, 10, &m_rxtask, CORE(1));
 
   using std::placeholders::_1;
   using std::placeholders::_2;
@@ -1039,6 +1041,7 @@ OvmsVehicle::~OvmsVehicle()
   if (m_can1) m_can1->SetPowerMode(Off);
   if (m_can2) m_can2->SetPowerMode(Off);
   if (m_can3) m_can3->SetPowerMode(Off);
+  if (m_can4) m_can4->SetPowerMode(Off);
 
   if (m_bms_voltages != NULL)
     {
@@ -1132,6 +1135,7 @@ void OvmsVehicle::RxTask()
       if (m_can1 == frame.origin) IncomingFrameCan1(&frame);
       else if (m_can2 == frame.origin) IncomingFrameCan2(&frame);
       else if (m_can3 == frame.origin) IncomingFrameCan3(&frame);
+      else if (m_can4 == frame.origin) IncomingFrameCan4(&frame);
       }
     }
   }
@@ -1145,6 +1149,10 @@ void OvmsVehicle::IncomingFrameCan2(CAN_frame_t* p_frame)
   }
 
 void OvmsVehicle::IncomingFrameCan3(CAN_frame_t* p_frame)
+  {
+  }
+
+void OvmsVehicle::IncomingFrameCan4(CAN_frame_t* p_frame)
   {
   }
 
@@ -1176,6 +1184,11 @@ void OvmsVehicle::RegisterCanBus(int bus, CAN_mode_t mode, CAN_speed_t speed, db
       m_can3->SetPowerMode(On);
       m_can3->Start(mode,speed,dbcfile);
       break;
+    case 4:
+      m_can4 = (canbus*)MyPcpApp.FindDeviceByName("can4");
+      m_can4->SetPowerMode(On);
+      m_can4->Start(mode,speed,dbcfile);
+      break;
     default:
       break;
     }
@@ -1202,10 +1215,7 @@ void OvmsVehicle::VehicleTicker1(std::string event, void* data)
 
   m_ticker++;
 
-  if (m_poll_plist)
-    {
-    PollerSend();
-    }
+  PollerSend();
 
   Ticker1(m_ticker);
   if ((m_ticker % 10) == 0) Ticker10(m_ticker);
@@ -1251,7 +1261,8 @@ void OvmsVehicle::VehicleTicker1(std::string event, void* data)
       StandardMetrics.ms_v_bat_12v_voltage_ref->SetValue(StandardMetrics.ms_v_bat_12v_voltage->AsFloat());
       }
     }
-  else if ((m_ticker % 60) == 0)
+
+  if ((m_ticker % 60) == 0)
     {
     // check 12V voltage:
     float volt = StandardMetrics.ms_v_bat_12v_voltage->AsFloat();
@@ -1977,14 +1988,18 @@ OvmsVehicle::vehicle_mode_t OvmsVehicle::VehicleModeKey(const std::string code)
 
 void OvmsVehicle::PollSetPidList(canbus* bus, const poll_pid_t* plist)
   {
+  OvmsMutexLock lock(&m_poll_mutex);
   m_poll_bus = bus;
   m_poll_plist = plist;
+  m_poll_ticker = 0;
+  m_poll_plcur = NULL;
   }
 
 void OvmsVehicle::PollSetState(uint8_t state)
   {
   if ((state < VEHICLE_POLL_NSTATES)&&(state != m_poll_state))
     {
+    OvmsMutexLock lock(&m_poll_mutex);
     m_poll_state = state;
     m_poll_ticker = 0;
     m_poll_plcur = NULL;
@@ -1993,6 +2008,8 @@ void OvmsVehicle::PollSetState(uint8_t state)
 
 void OvmsVehicle::PollerSend()
   {
+  OvmsMutexLock lock(&m_poll_mutex);
+  if (!m_poll_bus || !m_poll_plist) return;
   if (m_poll_plcur == NULL) m_poll_plcur = m_poll_plist;
 
   while (m_poll_plcur->txmoduleid != 0)
@@ -2079,7 +2096,7 @@ void OvmsVehicle::PollerReceive(CAN_frame_t* frame)
           (frame->data.u8[2] == m_poll_pid))
         {
         m_poll_ml_frame = 0;
-        IncomingPollReply(m_poll_bus, m_poll_type, m_poll_pid, &frame->data.u8[3], 5, 0);
+        IncomingPollReply(frame->origin, m_poll_type, m_poll_pid, &frame->data.u8[3], 5, 0);
         return;
         }
       break;
@@ -2099,7 +2116,7 @@ void OvmsVehicle::PollerReceive(CAN_frame_t* frame)
         // First frame; send flow control frame:
         CAN_frame_t txframe;
         memset(&txframe,0,sizeof(txframe));
-        txframe.origin = m_poll_bus;
+        txframe.origin = frame->origin;
         txframe.FIR.B.FF = CAN_frame_std;
         txframe.FIR.B.DLC = 8;
 
@@ -2118,7 +2135,7 @@ void OvmsVehicle::PollerReceive(CAN_frame_t* frame)
         txframe.data.u8[0] = 0x30; // flow control frame type
         txframe.data.u8[1] = 0x00; // request all frames available
         txframe.data.u8[2] = 0x19; // with 25ms send interval
-        m_poll_bus->Write(&txframe);
+        txframe.Write();
 
         // prepare frame processing, first frame contains first 4 bytes:
         m_poll_ml_remain = (((uint16_t)(frame->data.u8[0]&0x0f))<<8) + frame->data.u8[1] - 2 - 4;
@@ -2126,7 +2143,7 @@ void OvmsVehicle::PollerReceive(CAN_frame_t* frame)
         m_poll_ml_frame = 0;
 
         // ESP_LOGI(TAG, "Poll ML first frame (frame=%d, remain=%d)",m_poll_ml_frame,m_poll_ml_remain);
-        IncomingPollReply(m_poll_bus, m_poll_type, m_poll_pid, &frame->data.u8[4], 4, m_poll_ml_remain);
+        IncomingPollReply(frame->origin, m_poll_type, m_poll_pid, &frame->data.u8[4], 4, m_poll_ml_remain);
         return;
         }
       else if (((frame->data.u8[0]>>4)==0x2)&&(m_poll_ml_remain>0))
@@ -2147,7 +2164,7 @@ void OvmsVehicle::PollerReceive(CAN_frame_t* frame)
           }
         m_poll_ml_frame++;
         // ESP_LOGI(TAG, "Poll ML subsequent frame (frame=%d, remain=%d)",m_poll_ml_frame,m_poll_ml_remain);
-        IncomingPollReply(m_poll_bus, m_poll_type, m_poll_pid, &frame->data.u8[1], len, m_poll_ml_remain);
+        IncomingPollReply(frame->origin, m_poll_type, m_poll_pid, &frame->data.u8[1], len, m_poll_ml_remain);
         return;
         }
       break;
@@ -2165,7 +2182,7 @@ void OvmsVehicle::PollerReceive(CAN_frame_t* frame)
         // First frame; send flow control frame:
         CAN_frame_t txframe;
         memset(&txframe,0,sizeof(txframe));
-        txframe.origin = m_poll_bus;
+        txframe.origin = frame->origin;
         txframe.FIR.B.FF = CAN_frame_std; //CAN_frame_ext?
         txframe.FIR.B.DLC = 8;
 
@@ -2184,7 +2201,7 @@ void OvmsVehicle::PollerReceive(CAN_frame_t* frame)
         txframe.data.u8[0] = 0x30; // flow control frame type
         txframe.data.u8[1] = 0x00; // request all frames available
         txframe.data.u8[2] = 0x19; // with 25ms send interval
-        m_poll_bus->Write(&txframe);
+        txframe.Write();
 
         // prepare frame processing, first frame contains first 4 bytes:
         m_poll_ml_remain = (((uint16_t)(frame->data.u8[0]&0x0f))<<8) + frame->data.u8[1] - 3;
@@ -2192,7 +2209,7 @@ void OvmsVehicle::PollerReceive(CAN_frame_t* frame)
         m_poll_ml_frame = 0;
 
         //ESP_LOGD(TAG, "Poll ML first frame (frame=%d, remain=%d)",m_poll_ml_frame,m_poll_ml_remain);
-        IncomingPollReply(m_poll_bus, m_poll_type, m_poll_pid, &frame->data.u8[4], 4, m_poll_ml_remain);
+        IncomingPollReply(frame->origin, m_poll_type, m_poll_pid, &frame->data.u8[4], 4, m_poll_ml_remain);
         return;
         }
       else if (((frame->data.u8[0]>>4)==0x2)&&(m_poll_ml_remain>0))
@@ -2213,13 +2230,13 @@ void OvmsVehicle::PollerReceive(CAN_frame_t* frame)
           }
         m_poll_ml_frame++;
         //ESP_LOGD(TAG, "Poll ML subsequent frame (frame=%d, remain=%d)",m_poll_ml_frame,m_poll_ml_remain);
-        IncomingPollReply(m_poll_bus, m_poll_type, m_poll_pid, &frame->data.u8[1], len, m_poll_ml_remain);
+        IncomingPollReply(frame->origin, m_poll_type, m_poll_pid, &frame->data.u8[1], len, m_poll_ml_remain);
         return;
         }
       else if ((frame->data.u8[1] == 0x62)&&
                ((frame->data.u8[3]+(((uint16_t) frame->data.u8[2]) << 8)) == m_poll_pid))
         {
-        IncomingPollReply(m_poll_bus, m_poll_type, m_poll_pid, &frame->data.u8[4], 4, 0);
+        IncomingPollReply(frame->origin, m_poll_type, m_poll_pid, &frame->data.u8[4], 4, 0);
         }
       break;
     }
