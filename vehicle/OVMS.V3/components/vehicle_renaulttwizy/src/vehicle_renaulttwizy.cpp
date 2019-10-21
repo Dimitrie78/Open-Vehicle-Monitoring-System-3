@@ -26,7 +26,7 @@
 #include "ovms_log.h"
 static const char *TAG = "v-twizy";
 
-#define VERSION "1.2.4"
+#define VERSION "1.4.0"
 
 #include <stdio.h>
 #include <string>
@@ -80,6 +80,7 @@ OvmsVehicleRenaultTwizy* OvmsVehicleRenaultTwizy::GetInstance(OvmsWriter* writer
 size_t OvmsVehicleRenaultTwizy::m_modifier = 0;
 
 OvmsVehicleRenaultTwizy::OvmsVehicleRenaultTwizy()
+  : twizy_obd_rxwait(1,1)
 {
   ESP_LOGI(TAG, "Renault Twizy vehicle module");
 
@@ -419,6 +420,7 @@ OvmsVehicleRenaultTwizy::vehicle_command_t OvmsVehicleRenaultTwizy::MsgCommandHo
 
   // switch profile:
   CANopenResult_t res = m_sevcon->CfgSwitchProfile(key+1);
+  m_sevcon->UpdateProfileMetrics();
 
   // send result:
   ostringstream buf;
