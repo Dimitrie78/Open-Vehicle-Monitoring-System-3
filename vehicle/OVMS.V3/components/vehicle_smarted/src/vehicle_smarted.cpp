@@ -199,6 +199,10 @@ void OvmsVehicleSmartED::vehicle_smarted_car_on(bool isOn) {
     // Log once that car is being turned on
     ESP_LOGI(TAG,"CAR IS ON");
     StandardMetrics.ms_v_env_awake->SetValue(isOn);
+    
+    // charging 12v start
+    StandardMetrics.ms_v_env_charging12v->SetValue(true);
+    
     if (m_enable_write) PollSetState(2);
 
     // Reset trip values
@@ -213,6 +217,11 @@ void OvmsVehicleSmartED::vehicle_smarted_car_on(bool isOn) {
     // Log once that car is being turned off
     ESP_LOGI(TAG,"CAR IS OFF");
     StandardMetrics.ms_v_env_awake->SetValue(isOn);
+    
+    // charging 12v stop
+    if (!StandardMetrics.ms_v_charge_inprogress->AsBool())
+      StandardMetrics.ms_v_env_charging12v->SetValue(false);
+    
     if (m_enable_write) PollSetState(1);
     if (StandardMetrics.ms_v_pos_trip->AsFloat(0) > 0.1)
 			NotifyTrip();
@@ -334,6 +343,8 @@ void OvmsVehicleSmartED::HandleChargingStatus() {
       if (!StandardMetrics.ms_v_charge_inprogress->AsBool()) {
         if (!isCharging) {
           isCharging = true;
+          // charging 12v start
+          StandardMetrics.ms_v_env_charging12v->SetValue(true);
           // Reset charge kWh
           StandardMetrics.ms_v_charge_kwh->SetValue(0);
           // Reset trip values
@@ -360,6 +371,8 @@ void OvmsVehicleSmartED::HandleChargingStatus() {
         StandardMetrics.ms_v_charge_inprogress->SetValue(false);
         StandardMetrics.ms_v_charge_mode->SetValue("standard");
         StandardMetrics.ms_v_charge_type->SetValue("type2");
+        // charging 12v stop
+        StandardMetrics.ms_v_env_charging12v->SetValue(false);
         if (StandardMetrics.ms_v_bat_soc->AsInt() < 95) {
           // Assume the charge was interrupted
           ESP_LOGI(TAG,"Car charge session was interrupted");
@@ -692,15 +705,6 @@ void OvmsVehicleSmartED::Ticker1(uint32_t ticker) {
   HandleEnergy();
   if (mt_bus_awake->AsBool())
     HandleChargingStatus();
-  
-  // Handle 12Vcharging
-  float b12v_volt = StandardMetrics.ms_v_bat_12v_voltage->AsFloat(0);
-  if (b12v_volt > 13.5 && !StandardMetrics.ms_v_env_charging12v->AsBool()) {
-    StandardMetrics.ms_v_env_charging12v->SetValue(true);
-  } 
-  if (b12v_volt < 13.5 && StandardMetrics.ms_v_env_charging12v->AsBool()) {
-    StandardMetrics.ms_v_env_charging12v->SetValue(false);
-  }
   
   // Handle Tripcounter
   if (mt_pos_odometer_start->AsFloat(0) == 0 && StandardMetrics.ms_v_pos_odometer->AsFloat(0) > 0.0) {
