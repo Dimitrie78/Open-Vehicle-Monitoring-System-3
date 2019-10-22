@@ -576,6 +576,8 @@ void OvmsVehicleRenaultZoe::IncomingFrameCan1(CAN_frame_t* p_frame) {
       if (isCharging != lastCharging) { // EVENT charge state changed
         if (isCharging) { // EVENT started charging
           POLLSTATE_CHARGING;
+          // Handle 12Vcharging
+          StandardMetrics.ms_v_env_charging12v->SetValue(true);
           // Reset charge kWh
           StandardMetrics.ms_v_charge_kwh->SetValue(0);
           // Reset trip values
@@ -594,6 +596,8 @@ void OvmsVehicleRenaultZoe::IncomingFrameCan1(CAN_frame_t* p_frame) {
           StandardMetrics.ms_v_charge_substate->SetValue("onrequest");
         } else { // EVENT stopped charging
           POLLSTATE_OFF;
+          // Handle 12Vcharging
+          StandardMetrics.ms_v_env_charging12v->SetValue(false);
           StandardMetrics.ms_v_charge_pilot->SetValue(false);
           StandardMetrics.ms_v_charge_inprogress->SetValue(isCharging);
           StandardMetrics.ms_v_charge_mode->SetValue("standard");
@@ -1026,6 +1030,8 @@ void OvmsVehicleRenaultZoe::car_on(bool isOn) {
     ESP_LOGI(TAG,"CAR IS ON");
 		StandardMetrics.ms_v_env_on->SetValue(isOn);
 		StandardMetrics.ms_v_env_awake->SetValue(isOn);
+    // Handle 12Vcharging
+    StandardMetrics.ms_v_env_charging12v->SetValue(true);
     if (m_enable_write) POLLSTATE_RUNNING;
     // Reset trip values
     if (!m_reset_trip) {
@@ -1038,7 +1044,12 @@ void OvmsVehicleRenaultZoe::car_on(bool isOn) {
   else if(!isOn && StandardMetrics.ms_v_env_on->AsBool()) {
     // Car is being turned OFF
     ESP_LOGI(TAG,"CAR IS OFF");
-    if (m_enable_write) POLLSTATE_ON;
+    if (!StandardMetrics.ms_v_charge_inprogress->AsBool()) {
+      StandardMetrics.ms_v_env_charging12v->SetValue(false);
+      if (m_enable_write) POLLSTATE_ON;
+    } else {
+      if (m_enable_write) POLLSTATE_CHARGING;
+    }
 		StandardMetrics.ms_v_env_on->SetValue( isOn );
 		StandardMetrics.ms_v_env_awake->SetValue( isOn );
 		StandardMetrics.ms_v_pos_speed->SetValue( 0 );
@@ -1061,17 +1072,6 @@ void OvmsVehicleRenaultZoe::Ticker1(uint32_t ticker) {
   }
   
   HandleEnergy();
-  
-  // Handle 12Vcharging
-  float b12v_volt = StandardMetrics.ms_v_bat_12v_voltage->AsFloat(0);
-  if (b12v_volt > 13.1 && !StandardMetrics.ms_v_env_charging12v->AsBool()) {
-    ESP_LOGI(TAG,"Start Charging 12V");
-    StandardMetrics.ms_v_env_charging12v->SetValue(true);
-  } 
-  if (b12v_volt < 13.1 && StandardMetrics.ms_v_env_charging12v->AsBool()) {
-    ESP_LOGI(TAG,"Stop Charging 12V");
-    StandardMetrics.ms_v_env_charging12v->SetValue(false);
-  }
   
   // Handle Tripcounter
   if (mt_pos_odometer_start->AsFloat(0) == 0 && StandardMetrics.ms_v_pos_odometer->AsFloat(0) > 0.0) {
