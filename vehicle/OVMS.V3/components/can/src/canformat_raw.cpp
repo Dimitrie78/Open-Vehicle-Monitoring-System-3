@@ -28,7 +28,7 @@
 static const char *TAG = "canformat-raw";
 
 #include <errno.h>
-#include <endian.h>
+//#include <endian.h>
 #include "pcp.h"
 #include "canformat_raw.h"
 
