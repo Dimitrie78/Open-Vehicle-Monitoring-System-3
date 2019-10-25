@@ -121,8 +121,8 @@ class OvmsVehicleSmartED : public OvmsVehicle
     OvmsCommand *cmd_xse;
     
     OvmsMetricInt *mt_vehicle_time;             // vehicle time
-    OvmsMetricInt *mt_trip_start;               // trip since start
-    OvmsMetricInt *mt_trip_reset;               // trip since Reset
+    OvmsMetricFloat *mt_trip_start;             // trip since start
+    OvmsMetricFloat *mt_trip_reset;             // trip since Reset
     OvmsMetricBool *mt_hv_active;               // HV active
     OvmsMetricBool *mt_c_active;                // charge active
     OvmsMetricBool *mt_bus_awake;               // can-bus aktiv

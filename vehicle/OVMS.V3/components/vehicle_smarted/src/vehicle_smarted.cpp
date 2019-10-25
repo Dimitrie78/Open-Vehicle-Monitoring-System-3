@@ -85,14 +85,14 @@ OvmsVehicleSmartED::OvmsVehicleSmartED() {
     memset(m_vin, 0, sizeof(m_vin));
     
     // init metrics:
-    mt_vehicle_time          = MyMetrics.InitInt("xse.v.display.time", SM_STALE_MIN, 0);
-    mt_trip_start            = MyMetrics.InitInt("xse.v.display.trip.start", SM_STALE_MIN, 0);
-    mt_trip_reset            = MyMetrics.InitInt("xse.v.display.trip.reset", SM_STALE_MIN, 0);
+    mt_vehicle_time          = MyMetrics.InitInt("xse.v.display.time", SM_STALE_MIN, 0, Minutes);
+    mt_trip_start            = MyMetrics.InitFloat("xse.v.display.trip.start", SM_STALE_MID, 0, Kilometers);
+    mt_trip_reset            = MyMetrics.InitFloat("xse.v.display.trip.reset", SM_STALE_MID, 0, Kilometers);
     mt_hv_active             = MyMetrics.InitBool("xse.v.b.hv.active", SM_STALE_MIN, false);
     mt_c_active              = MyMetrics.InitBool("xse.v.c.active", SM_STALE_MIN, false);
     mt_bus_awake             = MyMetrics.InitBool("xse.v.bus.awake", SM_STALE_MIN, false);
-    mt_bat_energy_used_start = MyMetrics.InitFloat("xse.v.b.energy.used.start", SM_STALE_MID, kWh);
-    mt_bat_energy_used_reset = MyMetrics.InitFloat("xse.v.b.energy.used.reset", SM_STALE_MID, kWh);
+    mt_bat_energy_used_start = MyMetrics.InitFloat("xse.v.b.energy.used.start", SM_STALE_MID, 0, kWh);
+    mt_bat_energy_used_reset = MyMetrics.InitFloat("xse.v.b.energy.used.reset", SM_STALE_MID, 0, kWh);
     mt_pos_odometer_start    = MyMetrics.InitFloat("xse.v.pos.odometer.start", SM_STALE_MID, 0, Kilometers);
 
     mt_nlg6_present             = MyMetrics.InitBool("xse.v.nlg6.present", SM_STALE_MIN, false);
@@ -389,7 +389,9 @@ void OvmsVehicleSmartED::HandleChargingStatus() {
     }
   } else if (isCharging) {
     isCharging = false;
-    StandardMetrics.ms_v_charge_state->SetValue("done");
+    StandardMetrics.ms_v_charge_duration_full->SetValue(0);
+    StandardMetrics.ms_v_charge_duration_soc->SetValue(0);
+    StandardMetrics.ms_v_charge_duration_range->SetValue(0);
   }
 }
 
@@ -632,14 +634,13 @@ void OvmsVehicleSmartED::IncomingFrameCan1(CAN_frame_t* p_frame) {
     }
     case 0x504: //Distance from start and from reset
     {
-      uint16_t value = d[1] * 256 + d[2];
-      if (value != 254) {
-        mt_trip_start->SetValue(value);
-      }
+      float value;
+      value = d[1] * 256 + d[2];
+      if (value != 65535)
+        mt_trip_start->SetValue((float)value/100);
       value = d[4] * 256 + d[5];
-      if (value != 254) {
-        mt_trip_reset->SetValue(value);
-      }
+      if (value != 65535)
+        mt_trip_reset->SetValue((float)value/100);
       break;
     }
     case 0x3D7: //HV Status
