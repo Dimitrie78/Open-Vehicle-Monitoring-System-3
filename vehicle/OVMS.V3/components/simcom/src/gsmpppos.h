@@ -43,9 +43,8 @@ extern "C"
 #include "netif/ppp/pppapi.h"
   };
 #include "gsmmux.h"
-#include "ovms.h"
 
-class GsmPPPOS : public InternalRamAllocated
+class GsmPPPOS
   {
   public:
     GsmPPPOS(GsmMux* mux, int channel);
