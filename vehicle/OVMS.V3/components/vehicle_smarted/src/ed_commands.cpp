@@ -181,7 +181,8 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandWakeup() {
     frame.FIR.B.DLC = 4;
     frame.FIR.B.FF = CAN_frame_std;
     frame.MsgID = 0x210;
-    frame.data.u8[0] = 0x00;
+    frame.callback = NULL;
+    frame.data.u8[0] = 0x01;
     frame.data.u8[1] = 0x00;
     frame.data.u8[2] = 0x00;
     frame.data.u8[3] = 0x00;
