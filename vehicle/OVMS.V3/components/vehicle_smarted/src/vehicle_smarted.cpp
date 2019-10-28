@@ -637,10 +637,10 @@ void OvmsVehicleSmartED::IncomingFrameCan1(CAN_frame_t* p_frame) {
       float value;
       value = d[1] * 256 + d[2];
       if (value != 65535)
-        mt_trip_start->SetValue((float)value/100);
+        mt_trip_start->SetValue((float)value/10);
       value = d[4] * 256 + d[5];
       if (value != 65535)
-        mt_trip_reset->SetValue((float)value/100);
+        mt_trip_reset->SetValue((float)value/10);
       break;
     }
     case 0x3D7: //HV Status
