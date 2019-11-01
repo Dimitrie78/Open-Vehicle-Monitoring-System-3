@@ -99,21 +99,21 @@ OvmsVehicle::vehicle_command_t OvmsVehicleRenaultZoe::CommandHomelink(int button
 #ifdef CONFIG_OVMS_COMP_MAX7317  
   if(m_enable_egpio) {
     if (button == 0) {
-      MyPeripherals->m_max7317->Output(MAX7317_EGPIO_3, 1);
-      vTaskDelay(500 / portTICK_PERIOD_MS);
       MyPeripherals->m_max7317->Output(MAX7317_EGPIO_3, 0);
+      vTaskDelay(500 / portTICK_PERIOD_MS);
+      MyPeripherals->m_max7317->Output(MAX7317_EGPIO_3, 1);
       return Success;
     }
     if (button == 1) {
-      MyPeripherals->m_max7317->Output(MAX7317_EGPIO_4, 1);
-      vTaskDelay(500 / portTICK_PERIOD_MS);
       MyPeripherals->m_max7317->Output(MAX7317_EGPIO_4, 0);
+      vTaskDelay(500 / portTICK_PERIOD_MS);
+      MyPeripherals->m_max7317->Output(MAX7317_EGPIO_4, 1);
       return Success;
     }
     if (button == 2) {
-      MyPeripherals->m_max7317->Output(MAX7317_EGPIO_5, 1);
-      vTaskDelay(500 / portTICK_PERIOD_MS);
       MyPeripherals->m_max7317->Output(MAX7317_EGPIO_5, 0);
+      vTaskDelay(500 / portTICK_PERIOD_MS);
+      MyPeripherals->m_max7317->Output(MAX7317_EGPIO_5, 1);
       return Success;
     }
   }
