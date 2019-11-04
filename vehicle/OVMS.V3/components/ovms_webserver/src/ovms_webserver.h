@@ -50,6 +50,7 @@
 #include "ovms_shell.h"
 #include "ovms_netmanager.h"
 #include "ovms_utils.h"
+#include "log_buffers.h"
 
 #define OVMS_GLOBAL_AUTH_FILE     "/store/.htpasswd"
 
@@ -358,6 +359,7 @@ enum WebSocketTxJobType
   WSTX_MetricsUpdate,         // payload: -
   WSTX_Config,                // payload: config (todo)
   WSTX_Notify,                // payload: notification
+  WSTX_LogBuffers,            // payload: logbuffers
 };
 
 struct WebSocketTxJob
@@ -368,6 +370,7 @@ struct WebSocketTxJob
     char*                     event;
     OvmsConfigParam*          config;
     OvmsNotifyEntry*          notification;
+    LogBuffers*               logbuffers;
   };
 
   void clear(size_t client);
@@ -379,7 +382,7 @@ struct WebSocketTxTodo
   WebSocketTxJob          job;
 };
 
-class WebSocketHandler : public MgHandler
+class WebSocketHandler : public MgHandler, public OvmsWriter
 {
   public:
     WebSocketHandler(mg_connection* nc, size_t slot, size_t modifier, size_t reader);
@@ -402,12 +405,18 @@ class WebSocketHandler : public MgHandler
     void Unsubscribe(std::string topic);
     bool IsSubscribedTo(std::string topic);
 
+  // OvmsWriter:
+  public:
+    void Log(LogBuffers* message);
+
   public:
     size_t                    m_slot;
     size_t                    m_modifier;         // "our" metrics modifier
     size_t                    m_reader;           // "our" notification reader id
     QueueHandle_t             m_jobqueue;
-    int                       m_jobqueue_overflow;
+    uint32_t                  m_jobqueue_overflow_status;
+    uint32_t                  m_jobqueue_overflow_logged;
+    uint32_t                  m_jobqueue_overflow_dropcnt;
     SemaphoreHandle_t         m_mutex;
     WebSocketTxJob            m_job;
     int                       m_sent;
