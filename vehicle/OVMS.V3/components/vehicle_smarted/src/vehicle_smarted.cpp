@@ -142,7 +142,6 @@ OvmsVehicleSmartED::OvmsVehicleSmartED() {
     RegisterCanBus(2, CAN_MODE_ACTIVE, CAN_SPEED_500KBPS);
     PollSetPidList(m_can1,obdii_polls);
     PollSetState(0);
-    m_can2->SetPowerMode(Off);
     
     MyConfig.RegisterParam("xse", "Smart ED", true, true);
     ConfigChanged(NULL);
