@@ -227,6 +227,10 @@ OvmsVehicle::vehicle_command_t OvmsVehicleRenaultZoe::CommandStat(int verbosity,
   const char* soh = StdMetrics.ms_v_bat_soh->AsUnitString("-", Native, 1).c_str();
   if (*soh != '-')
     writer->printf("SOH: %s\n", soh);
-
+  
+  const char* avai_energy = mt_available_energy->AsUnitString("-", Native, 1).c_str();
+  if (*avai_energy != '-')
+    writer->printf("Energy Available: %s\n", avai_energy);
+  
   return Success;
 }
