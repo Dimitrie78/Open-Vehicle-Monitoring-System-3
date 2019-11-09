@@ -109,6 +109,7 @@ OvmsVehicleRenaultZoe::OvmsVehicleRenaultZoe() {
   // init metrics:
   mt_pos_odometer_start   = MyMetrics.InitFloat("xrz.v.pos.odometer.start", SM_STALE_MID, 0, Kilometers);
   mt_bus_awake            = MyMetrics.InitBool("xrz.v.bus.awake", SM_STALE_MIN, false);
+  mt_available_energy     = MyMetrics.InitFloat("xrz.v.avail.energy", SM_STALE_MID, 0, kWh);
 	
 	// init commands:
   cmd_zoe = MyCommandApp.RegisterCommand("zoe", "Renault Zoe");
@@ -316,6 +317,7 @@ void OvmsVehicleRenaultZoe::IncomingFrameCan1(CAN_frame_t* p_frame) {
       // 427,26,28,1,0,0,,,,ff,Pre Heating Progress
       // 427,40,47,0.3,0,0,kW,,,e2,Available Charging Power
       // 427,49,57,0.1,0,1,kWh,,,e2,Available Energy
+      mt_available_energy->SetValue((float) (((CAN_UINT(6))>>6) & 0x3ff) * 0.1);
       // 427,58,58,1,0,0,,,,e2,Charge Available
       break;
     case 0x42a:
