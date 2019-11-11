@@ -68,7 +68,7 @@ OvmsVehicle::vehicle_command_t OvmsVehicleRenaultZoe::CommandWakeup() {
   CAN_frame_t frame;
   memset(&frame, 0, sizeof(frame));
 
-  frame.origin = m_can2;
+  frame.origin = m_can1;
   frame.FIR.U = 0;
   frame.FIR.B.DLC = 1;
   frame.FIR.B.FF = CAN_frame_std;
