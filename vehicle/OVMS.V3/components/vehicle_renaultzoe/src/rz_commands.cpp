@@ -127,6 +127,7 @@ OvmsVehicle::vehicle_command_t OvmsVehicleRenaultZoe::CommandTrip(int verbosity,
 	writer->printf("Driven: %s\n", (char*) StdMetrics.ms_v_pos_trip->AsUnitString("-", rangeUnit, 1).c_str());
 	writer->printf("Energy used: %s\n", (char*) StdMetrics.ms_v_bat_energy_used->AsUnitString("-", Native, 3).c_str());
 	writer->printf("Energy recd: %s\n", (char*) StdMetrics.ms_v_bat_energy_recd->AsUnitString("-", Native, 3).c_str());
+	writer->printf("Energy Available: %s\n", (char*) mt_available_energy->AsUnitString("-", Native, 1).c_str());
 	
 	return Success;
 }
@@ -226,6 +227,10 @@ OvmsVehicle::vehicle_command_t OvmsVehicleRenaultZoe::CommandStat(int verbosity,
   const char* soh = StdMetrics.ms_v_bat_soh->AsUnitString("-", Native, 1).c_str();
   if (*soh != '-')
     writer->printf("SOH: %s\n", soh);
-
+  
+  const char* avai_energy = mt_available_energy->AsUnitString("-", Native, 1).c_str();
+  if (*avai_energy != '-')
+    writer->printf("Energy Available: %s\n", avai_energy);
+  
   return Success;
 }
