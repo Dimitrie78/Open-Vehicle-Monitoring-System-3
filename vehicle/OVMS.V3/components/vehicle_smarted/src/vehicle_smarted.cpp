@@ -125,7 +125,7 @@ OvmsVehicleSmartED::OvmsVehicleSmartED() {
     // init commands:
     cmd_xse = MyCommandApp.RegisterCommand("xse","SmartED 451 Gen.3");
     cmd_xse->RegisterCommand("recu","Set recu..", xse_recu, "<up/down>",1,1);
-    cmd_xse->RegisterCommand("charge","Set charging Timer..", xse_chargetimer, "<hour> <minutes>", 2, 2);
+    cmd_xse->RegisterCommand("charge","Set charging Timer..", xse_chargetimer, "<hour> <minutes> <on/off>", 3, 3);
     cmd_xse->RegisterCommand("trip", "Show vehicle trip", xse_trip);
     
     // BMS configuration:

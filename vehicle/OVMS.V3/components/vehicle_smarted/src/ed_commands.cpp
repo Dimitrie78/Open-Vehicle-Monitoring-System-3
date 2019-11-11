@@ -93,6 +93,16 @@ void OvmsVehicleSmartED::xse_chargetimer(int verbosity, OvmsWriter* writer, Ovms
     writer->puts("ERROR: Minute invalid (0-59)");
     return;
   }
+  if (strcmp("on", argv[2]) == 0) {
+    enable = true;
+  }
+  else if (strcmp("off", argv[2]) == 0) {
+    enable = false;
+  }
+  else {
+    writer->puts("Error: last argument must be 'on' or 'off'");
+    return;
+  }
   if( smart->CommandSetChargeTimer(enable, hours, minutes) == OvmsVehicle::Success ) {
     writer->printf("Charging Time set to: %d:%d\n", hours, minutes);
   }
