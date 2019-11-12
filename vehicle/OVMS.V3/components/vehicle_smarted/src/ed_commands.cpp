@@ -204,6 +204,7 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandWakeup() {
 OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandClimateControl(bool enable) {
   time_t rawtime;
   time ( &rawtime );
+  //rawtime += 1200; // add 20 minutes
   struct tm* tmu = localtime(&rawtime);
   int hours = tmu->tm_hour;
   int minutes = tmu->tm_min;
@@ -276,6 +277,7 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandHomelink(int button, i
     bool enable;
     time_t rawtime;
     time ( &rawtime );
+    //rawtime += 1200; // add 20 minutes
     struct tm* tmu = localtime(&rawtime);
     int hours = tmu->tm_hour;
     int minutes = tmu->tm_min;
