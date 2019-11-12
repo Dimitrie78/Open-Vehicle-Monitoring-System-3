@@ -64,6 +64,7 @@ class OvmsVehicleSmartED : public OvmsVehicle
   public:
     void WebInit();
     void WebDeInit();
+    void ObdInitPoll();
     static void WebCfgFeatures(PageEntry_t& p, PageContext_t& c);
     static void WebCfgBattery(PageEntry_t& p, PageContext_t& c);
     static void WebCfgCommands(PageEntry_t& p, PageContext_t& c);

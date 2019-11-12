@@ -52,110 +52,98 @@ static const char *TAG = "v-smarted";
 #include "vehicle_smarted.h"
 
 
-static const OvmsVehicle::poll_pid_t obdii_polls[] =
-{
-  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0xF111, {  0,120,999 } }, // rqChargerPN_HW
-  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0226, {  0,120,999 } }, // rqChargerVoltages
-  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0225, {  0,120,999 } }, // rqChargerAmps
-  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x022A, {  0,120,999 } }, // rqChargerSelCurrent
-  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0223, {  0,120,999 } }, // rqChargerTemperatures
-  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0201, {  0,300,600 } }, // rqBattTemperatures
-  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0202, {  0,300,600 } }, // rqBattModuleTemperatures
-  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0208, {  0,300,600 } }, // rqBattVolts
-  { 0, 0, 0x00, 0x00, { 0, 0, 0 } }
-};
-
 OvmsVehicleSmartED* OvmsVehicleSmartED::GetInstance(OvmsWriter* writer /*=NULL*/) {
-  OvmsVehicleSmartED* zoe = (OvmsVehicleSmartED*) MyVehicleFactory.ActiveVehicle();
+  OvmsVehicleSmartED* smart = (OvmsVehicleSmartED*) MyVehicleFactory.ActiveVehicle();
   string type = StdMetrics.ms_v_type->AsString();
-  if (!zoe || type != "SE") {
+  if (!smart || type != "SE") {
     if (writer)
       writer->puts("Error: SmartED vehicle module not selected");
     return NULL;
   }
-  return zoe;
+  return smart;
 }
 
 /**
  * Constructor & destructor
  */
 OvmsVehicleSmartED::OvmsVehicleSmartED() {
-    ESP_LOGI(TAG, "Start Smart ED vehicle module");
-    
-    memset(m_vin, 0, sizeof(m_vin));
-    
-    // init metrics:
-    mt_vehicle_time          = MyMetrics.InitInt("xse.v.display.time", SM_STALE_MIN, 0, Minutes);
-    mt_trip_start            = MyMetrics.InitFloat("xse.v.display.trip.start", SM_STALE_MID, 0, Kilometers);
-    mt_trip_reset            = MyMetrics.InitFloat("xse.v.display.trip.reset", SM_STALE_MID, 0, Kilometers);
-    mt_hv_active             = MyMetrics.InitBool("xse.v.b.hv.active", SM_STALE_MIN, false);
-    mt_c_active              = MyMetrics.InitBool("xse.v.c.active", SM_STALE_MIN, false);
-    mt_bus_awake             = MyMetrics.InitBool("xse.v.bus.awake", SM_STALE_MIN, false);
-    mt_bat_energy_used_start = MyMetrics.InitFloat("xse.v.b.energy.used.start", SM_STALE_MID, 0, kWh);
-    mt_bat_energy_used_reset = MyMetrics.InitFloat("xse.v.b.energy.used.reset", SM_STALE_MID, 0, kWh);
-    mt_pos_odometer_start    = MyMetrics.InitFloat("xse.v.pos.odometer.start", SM_STALE_MID, 0, Kilometers);
+  ESP_LOGI(TAG, "Start Smart ED vehicle module");
+  
+  memset(m_vin, 0, sizeof(m_vin));
+  
+  // init metrics:
+  mt_vehicle_time          = MyMetrics.InitInt("xse.v.display.time", SM_STALE_MIN, 0, Minutes);
+  mt_trip_start            = MyMetrics.InitFloat("xse.v.display.trip.start", SM_STALE_MID, 0, Kilometers);
+  mt_trip_reset            = MyMetrics.InitFloat("xse.v.display.trip.reset", SM_STALE_MID, 0, Kilometers);
+  mt_hv_active             = MyMetrics.InitBool("xse.v.b.hv.active", SM_STALE_MIN, false);
+  mt_c_active              = MyMetrics.InitBool("xse.v.c.active", SM_STALE_MIN, false);
+  mt_bus_awake             = MyMetrics.InitBool("xse.v.bus.awake", SM_STALE_MIN, false);
+  mt_bat_energy_used_start = MyMetrics.InitFloat("xse.v.b.energy.used.start", SM_STALE_MID, 0, kWh);
+  mt_bat_energy_used_reset = MyMetrics.InitFloat("xse.v.b.energy.used.reset", SM_STALE_MID, 0, kWh);
+  mt_pos_odometer_start    = MyMetrics.InitFloat("xse.v.pos.odometer.start", SM_STALE_MID, 0, Kilometers);
 
-    mt_nlg6_present             = MyMetrics.InitBool("xse.v.nlg6.present", SM_STALE_MIN, false);
-    mt_nlg6_main_volts          = new OvmsMetricVector<float>("xse.v.nlg6.main.volts", SM_STALE_HIGH, Volts);
-    mt_nlg6_main_amps           = new OvmsMetricVector<float>("xse.v.nlg6.main.amps", SM_STALE_HIGH, Amps);
-    mt_nlg6_amps_setpoint       = MyMetrics.InitFloat("xse.v.nlg6.amps.setpoint", SM_STALE_MIN, 0, Amps);
-    mt_nlg6_amps_cablecode      = MyMetrics.InitFloat("xse.v.nlg6.amps.cablecode", SM_STALE_MIN, 0, Amps);
-    mt_nlg6_amps_chargingpoint  = MyMetrics.InitFloat("xse.v.nlg6.amps.chargingpoint", SM_STALE_MIN, 0, Amps);
-    mt_nlg6_dc_current          = MyMetrics.InitFloat("xse.v.nlg6.dc.current", SM_STALE_MIN, 0, Volts);
-    mt_nlg6_dc_hv               = MyMetrics.InitFloat("xse.v.nlg6.dc.hv", SM_STALE_MIN, 0, Volts);
-    mt_nlg6_dc_lv               = MyMetrics.InitFloat("xse.v.nlg6.dc.lv", SM_STALE_MIN, 0, Volts);
-    mt_nlg6_temps               = new OvmsMetricVector<float>("xse.v.nlg6.temps", SM_STALE_HIGH, Celcius);
-    mt_nlg6_temp_reported       = MyMetrics.InitFloat("xse.v.nlg6.temp.reported", SM_STALE_MIN, 0, Celcius);
-    mt_nlg6_temp_socket         = MyMetrics.InitFloat("xse.v.nlg6.temp.socket", SM_STALE_MIN, 0, Celcius);
-    mt_nlg6_temp_coolingplate   = MyMetrics.InitFloat("xse.v.nlg6.temp.coolingplate", SM_STALE_MIN, 0, Celcius);
-    mt_nlg6_pn_hw               = MyMetrics.InitString("xse.v.nlg6.pn.hw", SM_STALE_MIN, 0);
+  mt_nlg6_present             = MyMetrics.InitBool("xse.v.nlg6.present", SM_STALE_MIN, false);
+  mt_nlg6_main_volts          = new OvmsMetricVector<float>("xse.v.nlg6.main.volts", SM_STALE_HIGH, Volts);
+  mt_nlg6_main_amps           = new OvmsMetricVector<float>("xse.v.nlg6.main.amps", SM_STALE_HIGH, Amps);
+  mt_nlg6_amps_setpoint       = MyMetrics.InitFloat("xse.v.nlg6.amps.setpoint", SM_STALE_MIN, 0, Amps);
+  mt_nlg6_amps_cablecode      = MyMetrics.InitFloat("xse.v.nlg6.amps.cablecode", SM_STALE_MIN, 0, Amps);
+  mt_nlg6_amps_chargingpoint  = MyMetrics.InitFloat("xse.v.nlg6.amps.chargingpoint", SM_STALE_MIN, 0, Amps);
+  mt_nlg6_dc_current          = MyMetrics.InitFloat("xse.v.nlg6.dc.current", SM_STALE_MIN, 0, Volts);
+  mt_nlg6_dc_hv               = MyMetrics.InitFloat("xse.v.nlg6.dc.hv", SM_STALE_MIN, 0, Volts);
+  mt_nlg6_dc_lv               = MyMetrics.InitFloat("xse.v.nlg6.dc.lv", SM_STALE_MIN, 0, Volts);
+  mt_nlg6_temps               = new OvmsMetricVector<float>("xse.v.nlg6.temps", SM_STALE_HIGH, Celcius);
+  mt_nlg6_temp_reported       = MyMetrics.InitFloat("xse.v.nlg6.temp.reported", SM_STALE_MIN, 0, Celcius);
+  mt_nlg6_temp_socket         = MyMetrics.InitFloat("xse.v.nlg6.temp.socket", SM_STALE_MIN, 0, Celcius);
+  mt_nlg6_temp_coolingplate   = MyMetrics.InitFloat("xse.v.nlg6.temp.coolingplate", SM_STALE_MIN, 0, Celcius);
+  mt_nlg6_pn_hw               = MyMetrics.InitString("xse.v.nlg6.pn.hw", SM_STALE_MIN, 0);
 
-    m_doorlock_port     = 9;
-    m_doorunlock_port   = 8;
-    m_ignition_port     = 7;
-    m_doorstatus_port   = 6;
-    m_range_ideal       = 135;
-    m_egpio_timout      = 5;
-    m_soc_rsoc          = false;
-    
-    m_candata_timer     = 0;
-    m_candata_poll      = 0;
-    m_egpio_timer       = 0;
-    
-    // init commands:
-    cmd_xse = MyCommandApp.RegisterCommand("xse","SmartED 451 Gen.3");
-    cmd_xse->RegisterCommand("recu","Set recu..", xse_recu, "<up/down>",1,1);
-    cmd_xse->RegisterCommand("charge","Set charging Timer..", xse_chargetimer, "<hour> <minutes> <on/off>", 3, 3);
-    cmd_xse->RegisterCommand("trip", "Show vehicle trip", xse_trip);
-    
-    // BMS configuration:
-    BmsSetCellArrangementVoltage(93, 1);
-    BmsSetCellArrangementTemperature(3, 1);
-    BmsSetCellLimitsVoltage(2.0, 5.0);
-    BmsSetCellLimitsTemperature(-39, 200);
-    BmsSetCellDefaultThresholdsVoltage(0.020, 0.030);
-    BmsSetCellDefaultThresholdsTemperature(2.0, 3.0);
-    
-    RestoreStatus();
-    
-    RegisterCanBus(1, CAN_MODE_ACTIVE, CAN_SPEED_500KBPS);
-    RegisterCanBus(2, CAN_MODE_ACTIVE, CAN_SPEED_500KBPS);
-    PollSetPidList(m_can1,obdii_polls);
-    PollSetState(0);
-    
-    MyConfig.RegisterParam("xse", "Smart ED", true, true);
-    ConfigChanged(NULL);
+  m_doorlock_port     = 9;
+  m_doorunlock_port   = 8;
+  m_ignition_port     = 7;
+  m_doorstatus_port   = 6;
+  m_range_ideal       = 135;
+  m_egpio_timout      = 5;
+  m_soc_rsoc          = false;
+  
+  m_candata_timer     = 0;
+  m_candata_poll      = 0;
+  m_egpio_timer       = 0;
+  
+  // init commands:
+  cmd_xse = MyCommandApp.RegisterCommand("xse","SmartED 451 Gen.3");
+  cmd_xse->RegisterCommand("recu","Set recu..", xse_recu, "<up/down>",1,1);
+  cmd_xse->RegisterCommand("charge","Set charging Timer..", xse_chargetimer, "<hour> <minutes> <on/off>", 3, 3);
+  cmd_xse->RegisterCommand("trip", "Show vehicle trip", xse_trip);
+  
+  // BMS configuration:
+  BmsSetCellArrangementVoltage(93, 1);
+  BmsSetCellArrangementTemperature(3, 1);
+  BmsSetCellLimitsVoltage(2.0, 5.0);
+  BmsSetCellLimitsTemperature(-39, 200);
+  BmsSetCellDefaultThresholdsVoltage(0.020, 0.030);
+  BmsSetCellDefaultThresholdsTemperature(2.0, 3.0);
+  
+  RestoreStatus();
+  
+  RegisterCanBus(1, CAN_MODE_ACTIVE, CAN_SPEED_500KBPS);
+  RegisterCanBus(2, CAN_MODE_ACTIVE, CAN_SPEED_500KBPS);
+  
+  // init OBD2 poller:
+  ObdInitPoll();
+  
+  MyConfig.RegisterParam("xse", "Smart ED", true, true);
+  ConfigChanged(NULL);
 
 #ifdef CONFIG_OVMS_COMP_WEBSERVER
-    WebInit();
+  WebInit();
 #endif
 }
 
 OvmsVehicleSmartED::~OvmsVehicleSmartED() {
-    ESP_LOGI(TAG, "Stop Smart ED vehicle module");
+  ESP_LOGI(TAG, "Stop Smart ED vehicle module");
     
 #ifdef CONFIG_OVMS_COMP_WEBSERVER
-    WebDeInit();
+  WebDeInit();
 #endif
 }
 
@@ -163,34 +151,34 @@ OvmsVehicleSmartED::~OvmsVehicleSmartED() {
  * ConfigChanged: reload single/all configuration variables
  */
 void OvmsVehicleSmartED::ConfigChanged(OvmsConfigParam* param) {
-    if (param && param->GetName() != "xse")
-        return;
+  if (param && param->GetName() != "xse")
+      return;
 
-    ESP_LOGI(TAG, "Smart ED reload configuration");
-    
-    m_doorlock_port   = MyConfig.GetParamValueInt("xse", "doorlock.port", 9);
-    m_doorunlock_port = MyConfig.GetParamValueInt("xse", "doorunlock.port", 8);
-    m_ignition_port   = MyConfig.GetParamValueInt("xse", "ignition.port", 7);
-    m_doorstatus_port = MyConfig.GetParamValueInt("xse", "doorstatus.port", 6);
-    
-    m_range_ideal     = MyConfig.GetParamValueInt("xse", "rangeideal", 135);
-    m_egpio_timout    = MyConfig.GetParamValueInt("xse", "egpio_timout", 5);
-    m_soc_rsoc        = MyConfig.GetParamValueBool("xse", "soc_rsoc", false);
-    
-    m_enable_write    = MyConfig.GetParamValueBool("xse", "canwrite", false);
-    m_lock_state      = MyConfig.GetParamValueBool("xse", "lockstate", false);
-    m_reset_trip      = MyConfig.GetParamValueBool("xse", "reset.trip.charge", false);
-    
-    m_reboot_time     = MyConfig.GetParamValueInt("xse", "reboot", 0);
-    
-    StandardMetrics.ms_v_charge_limit_soc->SetValue((float) MyConfig.GetParamValueInt("xse", "suffsoc", 0), Percentage );
-    StandardMetrics.ms_v_charge_limit_range->SetValue((float) MyConfig.GetParamValueInt("xse", "suffrange", 0), Kilometers );
+  ESP_LOGI(TAG, "Smart ED reload configuration");
+  
+  m_doorlock_port   = MyConfig.GetParamValueInt("xse", "doorlock.port", 9);
+  m_doorunlock_port = MyConfig.GetParamValueInt("xse", "doorunlock.port", 8);
+  m_ignition_port   = MyConfig.GetParamValueInt("xse", "ignition.port", 7);
+  m_doorstatus_port = MyConfig.GetParamValueInt("xse", "doorstatus.port", 6);
+  
+  m_range_ideal     = MyConfig.GetParamValueInt("xse", "rangeideal", 135);
+  m_egpio_timout    = MyConfig.GetParamValueInt("xse", "egpio_timout", 5);
+  m_soc_rsoc        = MyConfig.GetParamValueBool("xse", "soc_rsoc", false);
+  
+  m_enable_write    = MyConfig.GetParamValueBool("xse", "canwrite", false);
+  m_lock_state      = MyConfig.GetParamValueBool("xse", "lockstate", false);
+  m_reset_trip      = MyConfig.GetParamValueBool("xse", "reset.trip.charge", false);
+  
+  m_reboot_time     = MyConfig.GetParamValueInt("xse", "reboot", 0);
+  
+  StandardMetrics.ms_v_charge_limit_soc->SetValue((float) MyConfig.GetParamValueInt("xse", "suffsoc", 0), Percentage );
+  StandardMetrics.ms_v_charge_limit_range->SetValue((float) MyConfig.GetParamValueInt("xse", "suffrange", 0), Kilometers );
 
 #ifdef CONFIG_OVMS_COMP_MAX7317
-    MyPeripherals->m_max7317->Output(m_doorlock_port, 0);
-    MyPeripherals->m_max7317->Output(m_doorunlock_port, 0);
-    MyPeripherals->m_max7317->Output(m_ignition_port, 0);
-    MyPeripherals->m_max7317->Output((uint8_t)m_doorstatus_port,(uint8_t)1); // set port to input
+  MyPeripherals->m_max7317->Output(m_doorlock_port, 0);
+  MyPeripherals->m_max7317->Output(m_doorunlock_port, 0);
+  MyPeripherals->m_max7317->Output(m_ignition_port, 0);
+  MyPeripherals->m_max7317->Output((uint8_t)m_doorstatus_port,(uint8_t)1); // set port to input
 #endif
 }
 
