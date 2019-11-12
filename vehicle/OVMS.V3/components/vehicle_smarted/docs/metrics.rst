@@ -16,7 +16,7 @@ xse.v.display.trip.start                 17.5km                   Dashbord Trip 
 xse.v.nlg6.amps.cablecode                0A                       Onboard Charger Ampere Cable
 xse.v.nlg6.amps.chargingpoint            0A                       Onboard Charger Ampere ...
 xse.v.nlg6.amps.setpoint                 41A                      Onboard Charger Ampere setpoint
-xse.v.nlg6.dc.current                    0V                       Onboard Charger LV current Ampere
+xse.v.nlg6.dc.current                    0A                       Onboard Charger LV current Ampere
 xse.v.nlg6.dc.hv                         0V                       Onboard Charger HV Voltage
 xse.v.nlg6.dc.lv                         13.5V                    Onboard Charger LV Voltage
 xse.v.nlg6.main.amps                     0,0,0A                   Onboard Charger main Phasen Ampere
