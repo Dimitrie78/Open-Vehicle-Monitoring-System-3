@@ -139,7 +139,7 @@ void OvmsVehicleSmartED::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
     if (!reboot.empty()) {
       float n = atof(reboot.c_str());
       if (n < 0 || n > 60)
-        error += "<li data-input=\"reboot\">Reboot time invalid, must be 0…60</li>";
+        error += "<li data-input=\"reboot\">Network restart time invalid, must be 0…60</li>";
     }
     
     if (error == "") {
@@ -191,7 +191,8 @@ void OvmsVehicleSmartED::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
     "<p>This determines the Ideal Range.</p>",
     "min=\"90\" max=\"200\" step=\"1\"");
   
-  c.input_checkbox("Display real SOC = SOC", "soc_rsoc", soc_rsoc);
+  c.input_checkbox("change Display SOC = SOH", "soc_rsoc", soc_rsoc
+    "<p>WARNING: change Displayed SOC to SOH and SOH to SOC.</p>");
   
   c.input_checkbox("Enable CAN write(Poll)", "canwrite", canwrite,
     "<p>Controls overall CAN write access, some functions depend on this.</p>");
@@ -244,10 +245,10 @@ void OvmsVehicleSmartED::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
   c.input_slider("… Ignition Timeout", "egpio_timout", 5, "min",
     -1, egpio_timout.empty() ? 5 : atof(egpio_timout.c_str()), 5, 1, 30, 1,
     "<p>How long the Ignition should stay on in minutes.</p>");
-    
-  c.input_slider("Reboot Time", "reboot", 3, "min",
+
+  c.input_slider("Restart Network Time", "reboot", 3, "min",
     atof(reboot.c_str()) > 0, atof(reboot.c_str()), 15, 0, 60, 1,
-    "<p>Default 0=off. Reboot Modul automatic when no v2Server connection.</p>");
+    "<p>Default 0=off. Restart Network automatic when no v2Server connection.</p>");
 
   c.print("<hr>");
   c.input_button("default", "Save");
