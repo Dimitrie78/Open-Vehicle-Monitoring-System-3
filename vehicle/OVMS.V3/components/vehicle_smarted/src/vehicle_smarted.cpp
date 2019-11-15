@@ -169,6 +169,8 @@ void OvmsVehicleSmartED::ConfigChanged(OvmsConfigParam* param) {
   m_lock_state      = MyConfig.GetParamValueBool("xse", "lockstate", false);
   m_reset_trip      = MyConfig.GetParamValueBool("xse", "reset.trip.charge", false);
   
+  m_preclima_time   = MyConfig.GetParamValueInt("xse", "preclimatime", 15);
+  
   m_reboot_time     = MyConfig.GetParamValueInt("xse", "reboot", 0);
   
   StandardMetrics.ms_v_charge_limit_soc->SetValue((float) MyConfig.GetParamValueInt("xse", "suffsoc", 0), Percentage );
@@ -761,6 +763,9 @@ bool OvmsVehicleSmartED::SetFeature(int key, const char *value)
       MyConfig.SetParamValueBool("xse", "canwrite",  (bits& 1)!=0);
       return true;
     }
+    case 26:
+      MyConfig.SetParamValue("xse", "preclimatime", value);
+      return true;
     default:
       return OvmsVehicle::SetFeature(key, value);
   }
@@ -785,6 +790,8 @@ const std::string OvmsVehicleSmartED::GetFeature(int key)
       sprintf(buf, "%d", bits);
       return std::string(buf);
     }
+    case 26:
+      return MyConfig.GetParamValue("xse", "preclimatime", STR(0));
     default:
       return OvmsVehicle::GetFeature(key);
   }

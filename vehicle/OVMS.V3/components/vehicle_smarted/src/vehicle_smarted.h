@@ -147,6 +147,7 @@ class OvmsVehicleSmartED : public OvmsVehicle
     bool m_enable_write;                    // canwrite
     bool m_lock_state;                      // Door lock/unlock state
     bool m_reset_trip;                      // Reset trip when charging else when env on
+    int m_preclima_time;                    // pre clima time (minutes)
     int m_reboot_time;                      // Reboot time
 
   protected:
