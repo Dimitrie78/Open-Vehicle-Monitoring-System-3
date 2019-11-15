@@ -791,7 +791,7 @@ const std::string OvmsVehicleSmartED::GetFeature(int key)
       return std::string(buf);
     }
     case 26:
-      return MyConfig.GetParamValue("xse", "preclimatime", STR(0));
+      return MyConfig.GetParamValue("xse", "preclimatime", STR(15));
     default:
       return OvmsVehicle::GetFeature(key);
   }
