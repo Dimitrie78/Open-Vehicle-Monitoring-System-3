@@ -81,15 +81,16 @@ static const char *TAG = "v-smarted";
 
 static const OvmsVehicle::poll_pid_t smarted_polls[] =
 {
-  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0xF111, {  0,120,999 } }, // rqChargerPN_HW
-  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0226, {  0,120,999 } }, // rqChargerVoltages
-  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0225, {  0,120,999 } }, // rqChargerAmps
-  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x022A, {  0,120,999 } }, // rqChargerSelCurrent
-  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0223, {  0,120,999 } }, // rqChargerTemperatures
-  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0201, {  0,300,600 } }, // rqBattTemperatures
-  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0202, {  0,300,600 } }, // rqBattModuleTemperatures
-  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0208, {  0,300,600 } }, // rqBattVolts
-  { 0, 0, 0x00, 0x00, { 0, 0, 0 } }
+  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0xF111, {  0,120,999,0 } }, // rqChargerPN_HW
+//  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0226, {  0,120,999,0 } }, // rqChargerVoltages
+//  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0225, {  0,120,999,0 } }, // rqChargerAmps
+//  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x022A, {  0,120,999,0 } }, // rqChargerSelCurrent
+//  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0223, {  0,120,999,0 } }, // rqChargerTemperatures
+//  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0201, {  0,300,600,0 } }, // rqBattTemperatures
+//  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0202, {  0,300,600,0 } }, // rqBattModuleTemperatures
+//  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0208, {  0,300,600,0 } }, // rqBattVolts
+//  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0310, {  0,300,600,0 } }, // rqBattCapacity
+  { 0, 0, 0x00, 0x00, { 0, 0, 0, 0 } }
 };
 
 void OvmsVehicleSmartED::ObdInitPoll() {
@@ -102,73 +103,57 @@ void OvmsVehicleSmartED::ObdInitPoll() {
  * Incoming poll reply messages
  */
 void OvmsVehicleSmartED::IncomingPollReply(canbus* bus, uint16_t type, uint16_t pid, uint8_t* data, uint8_t length, uint16_t remain) {
-  static int last_pid = -1;
-  static int last_remain = -1;
-  static uint8_t buf[MAX_POLL_DATA_LEN];
-  static int bufpos = 0;
+  static string rxbuf;
+  
+  // init / fill rx buffer:
+  if (m_poll_ml_frame == 0) {
+    rxbuf.clear();
+    rxbuf.reserve(length + remain);
+  }
+  rxbuf.append((char*)data, length);
+  if (remain)
+    return;
+  
+  // complete:
+  switch (pid) {
 
-  int i;
-  
-  //if (pid == 0xF111) ESP_LOGD(TAG, "IncomingPollReply: pid=%#x len=%d remain=%d", pid, length, remain);
-  
-  if ( pid != last_pid || remain >= last_remain ) {
-    // must be a new reply, so reset to the beginning
-    last_pid=pid;
-    last_remain=remain;
-    bufpos=0;
-  }
-  
-  if (pid == 0xF111 && remain <= 3) {
-    remain=0;
-    m_poll_ml_remain=0;
-    for (i=0; i<length; i++) {
-      if ( bufpos < sizeof(buf) ) buf[bufpos++] = data[i];
+    case 0x0201: // rqBattTemperatures
+      //PollReply_BMS_BattTemp(buf, bufpos);
+      break;
+    case 0x0202: // rqBattModuleTemperatures
+      //PollReply_BMS_ModuleTemp(buf, bufpos);
+      break;
+    case 0x0208: // rqBattVolts
+      //PollReply_BMS_BattVolts(buf, bufpos);
+      break;
+    case 0xF111: // rqChargerPN_HW
+      //PollReply_NLG6_ChargerPN_HW(buf, bufpos);
+      break;
+    case 0x0226: // rqChargerVoltages
+      //PollReply_NLG6_ChargerVoltages(buf, bufpos);
+      break;
+    case 0x0225: // rqChargerAmps
+      //PollReply_NLG6_ChargerAmps(buf, bufpos);
+      break;
+    case 0x022A: // rqChargerSelCurrent
+      //PollReply_NLG6_ChargerSelCurrent(buf, bufpos);
+      break;
+    case 0x0223: // rqChargerTemperatures
+      //PollReply_NLG6_ChargerTemperatures(buf, bufpos);
+      break;
+    // Unknown: output
+    default: {
+      char *buf = NULL;
+      size_t rlen = rxbuf.size(), offset = 0;
+      do {
+        rlen = FormatHexDump(&buf, rxbuf.data() + offset, rlen, 16);
+        offset += 16;
+        ESP_LOGW(TAG, "OBD2: unhandled reply [%02x %02x]: %s", type, pid, buf ? buf : "-");
+      } while (rlen);
+      if (buf)
+        free(buf);
+      break;
     }
-  } else {
-    if (bufpos == MAX_POLL_DATA_LEN) { 
-      remain=0;
-      m_poll_ml_remain=0;
-    } else {
-      for (i=0; i<length; i++) {
-        if ( bufpos < sizeof(buf) ) buf[bufpos++] = data[i];
-      }
-    }
-  }
-  if (remain==0) {
-    uint32_t id_pid = m_poll_moduleid_low<<16 | pid;
-    switch (id_pid) {
-      case 0x7EF0201: // rqBattTemperatures
-        PollReply_BMS_BattTemp(buf, bufpos);
-        break;
-      case 0x7EF0202: // rqBattModuleTemperatures
-        PollReply_BMS_ModuleTemp(buf, bufpos);
-        break;
-      case 0x7EF0208: // rqBattVolts
-        PollReply_BMS_BattVolts(buf, bufpos);
-        break;
-      case 0x483F111: // rqChargerPN_HW
-        PollReply_NLG6_ChargerPN_HW(buf, bufpos);
-        break;
-      case 0x4830226: // rqChargerVoltages
-        PollReply_NLG6_ChargerVoltages(buf, bufpos);
-        break;
-      case 0x4830225: // rqChargerAmps
-        PollReply_NLG6_ChargerAmps(buf, bufpos);
-        break;
-      case 0x483022A: // rqChargerSelCurrent
-        PollReply_NLG6_ChargerSelCurrent(buf, bufpos);
-        break;
-      case 0x4830223: // rqChargerTemperatures
-        PollReply_NLG6_ChargerTemperatures(buf, bufpos);
-        break;
-      default:
-        ESP_LOGI(TAG, "IncomingPollReply: unknown reply module|pid=%#x len=%d", id_pid, bufpos);
-        break;
-    }
-    last_pid=pid;
-    last_remain=remain;
-    bufpos=0;
-    memset(buf, 0, sizeof(buf));
   }
 }
 
