@@ -111,14 +111,14 @@ class OvmsVehicleSmartED : public OvmsVehicle
     int  calcMinutesRemaining(float target, float charge_voltage, float charge_current);
     void calcBusAktivity(bool state, uint8_t pos);
     void HandleChargingStatus();
-    void PollReply_BMS_BattVolts(uint8_t* reply_data, uint16_t reply_len);
-    void PollReply_BMS_BattTemp(uint8_t* reply_data, uint16_t reply_len);
-    void PollReply_BMS_ModuleTemp(uint8_t* reply_data, uint16_t reply_len);
-    void PollReply_NLG6_ChargerPN_HW(uint8_t* reply_data, uint16_t reply_len);
-    void PollReply_NLG6_ChargerVoltages(uint8_t* reply_data, uint16_t reply_len);
-    void PollReply_NLG6_ChargerAmps(uint8_t* reply_data, uint16_t reply_len);
-    void PollReply_NLG6_ChargerSelCurrent(uint8_t* reply_data, uint16_t reply_len);
-    void PollReply_NLG6_ChargerTemperatures(uint8_t* reply_data, uint16_t reply_len);
+    void PollReply_BMS_BattVolts(const char* reply_data, uint16_t reply_len);
+    void PollReply_BMS_BattTemp(const char* reply_data, uint16_t reply_len);
+    void PollReply_BMS_ModuleTemp(const char* reply_data, uint16_t reply_len);
+    void PollReply_NLG6_ChargerPN_HW(const char* reply_data, uint16_t reply_len);
+    void PollReply_NLG6_ChargerVoltages(const char* reply_data, uint16_t reply_len);
+    void PollReply_NLG6_ChargerAmps(const char* reply_data, uint16_t reply_len);
+    void PollReply_NLG6_ChargerSelCurrent(const char* reply_data, uint16_t reply_len);
+    void PollReply_NLG6_ChargerTemperatures(const char* reply_data, uint16_t reply_len);
 
     OvmsCommand *cmd_xse;
     
