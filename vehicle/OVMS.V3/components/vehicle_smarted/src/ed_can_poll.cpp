@@ -88,10 +88,10 @@ static const OvmsVehicle::poll_pid_t smarted_polls[] =
   { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0223, {  0,120,999,0 } }, // rqChargerTemperatures
   { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0201, {  0,300,600,0 } }, // rqBattTemperatures
   { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0202, {  0,300,600,0 } }, // rqBattModuleTemperatures
-//  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0208, {  0,300,600,0 } }, // rqBattVolts
-  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0209, {  0,300,600,0 } }, // rqBattIsolation
-  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0203, {  0,300,600,0 } }, // rqBattAmps
-  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0310, {  0,300,600,0 } }, // rqBattCapacity
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0208, {  0,60,600,0 } }, // rqBattVolts
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0209, {  0,60,600,0 } }, // rqBattIsolation
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0203, {  0,60,600,0 } }, // rqBattAmps
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0310, {  0,60,600,0 } }, // rqBattCapacity
   { 0, 0, 0x00, 0x00, { 0, 0, 0, 0 } }
 };
 
@@ -106,8 +106,14 @@ void OvmsVehicleSmartED::ObdInitPoll() {
  */
 void OvmsVehicleSmartED::IncomingPollReply(canbus* bus, uint16_t type, uint16_t pid, uint8_t* data, uint8_t length, uint16_t remain) {
   static string rxbuf;
+  static uint16_t last_pid = -1;
   
-  ESP_LOGI(TAG, "pid: %04x length: %d m_poll_ml_remain: %d m_poll_ml_frame: %d", pid, length, m_poll_ml_remain, m_poll_ml_frame);
+  if (pid != last_pid) {
+    ESP_LOGI(TAG, "pid: %04x length: %d m_poll_ml_remain: %d m_poll_ml_frame: %d", pid, length, m_poll_ml_remain, m_poll_ml_frame);
+    last_pid = pid;
+    m_poll_ml_frame=0;
+  }
+  
   // init / fill rx buffer:
   if (m_poll_ml_frame == 0) {
     rxbuf.clear();
@@ -117,11 +123,9 @@ void OvmsVehicleSmartED::IncomingPollReply(canbus* bus, uint16_t type, uint16_t 
   
   if (pid == 0xF111 && m_poll_ml_frame == 1) {
     remain=0;
-    m_poll_ml_remain=0;
   }
   if (pid == 0x0208 && m_poll_ml_frame == 34) { //28
     remain=0;
-    m_poll_ml_remain=0;
   }
   if (remain)
     return;

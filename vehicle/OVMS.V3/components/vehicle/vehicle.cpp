@@ -2040,8 +2040,8 @@ void OvmsVehicle::PollerSend()
         m_poll_moduleid_high = 0x7ef;
         }
 
-      // ESP_LOGI(TAG, "Polling for %d/%02x (expecting %03x/%03x-%03x)",
-      //   m_poll_type,m_poll_pid,m_poll_moduleid_sent,m_poll_moduleid_low,m_poll_moduleid_high);
+      ESP_LOGI(TAG, "Polling for %d/%02x (expecting %03x/%03x-%03x)",
+        m_poll_type,m_poll_pid,m_poll_moduleid_sent,m_poll_moduleid_low,m_poll_moduleid_high);
       CAN_frame_t txframe;
       memset(&txframe,0,sizeof(txframe));
       txframe.origin = m_poll_bus;
@@ -2090,7 +2090,7 @@ void OvmsVehicle::PollerSend()
 
 void OvmsVehicle::PollerReceive(CAN_frame_t* frame)
   {
-  // ESP_LOGI(TAG, "Receive Poll Response for %d/%02x",m_poll_type,m_poll_pid);
+  ESP_LOGI(TAG, "Receive Poll Response for %d/%02x",m_poll_type,m_poll_pid);
   switch (m_poll_type)
     {
     case VEHICLE_POLL_TYPE_OBDIICURRENT:
@@ -2213,7 +2213,7 @@ void OvmsVehicle::PollerReceive(CAN_frame_t* frame)
         m_poll_ml_offset = 3;
         m_poll_ml_frame = 0;
 
-        //ESP_LOGD(TAG, "Poll ML first frame (frame=%d, remain=%d)",m_poll_ml_frame,m_poll_ml_remain);
+        ESP_LOGD(TAG, "Poll ML first frame (frame=%d, remain=%d)",m_poll_ml_frame,m_poll_ml_remain);
         IncomingPollReply(frame->origin, m_poll_type, m_poll_pid, &frame->data.u8[4], 4, m_poll_ml_remain);
         return;
         }
@@ -2234,7 +2234,7 @@ void OvmsVehicle::PollerReceive(CAN_frame_t* frame)
           m_poll_ml_remain = 0;
           }
         m_poll_ml_frame++;
-        //ESP_LOGD(TAG, "Poll ML subsequent frame (frame=%d, remain=%d)",m_poll_ml_frame,m_poll_ml_remain);
+        ESP_LOGD(TAG, "Poll ML subsequent frame (frame=%d, remain=%d)",m_poll_ml_frame,m_poll_ml_remain);
         IncomingPollReply(frame->origin, m_poll_type, m_poll_pid, &frame->data.u8[1], len, m_poll_ml_remain);
         return;
         }
