@@ -123,16 +123,20 @@ void OvmsVehicleSmartED::IncomingPollReply(canbus* bus, uint16_t type, uint16_t 
   
   if (pid == 0xF111 && m_poll_ml_frame == 1) {
     remain=0;
+    ESP_LOGD(TAG, "End pid: %04x length: %d m_poll_ml_remain: %d m_poll_ml_frame: %d", pid, length, m_poll_ml_remain, m_poll_ml_frame);
   }
-  if (pid == 0x0208 && m_poll_ml_frame == 34) { //28
+  
+  if ((data[5] * 256 + data[6]) == 21845) {
     remain=0;
+    ESP_LOGD(TAG, "End pid: %04x length: %d m_poll_ml_remain: %d m_poll_ml_frame: %d", pid, length, m_poll_ml_remain, m_poll_ml_frame);
   }
+  
   if (remain)
     return;
   
   // complete:
   switch (pid) {
-    case 0x0201: // rqBattTemperatures
+    /*case 0x0201: // rqBattTemperatures
       PollReply_BMS_BattTemp(rxbuf.data(), rxbuf.size());
       break;
     case 0x0202: // rqBattModuleTemperatures
@@ -155,7 +159,7 @@ void OvmsVehicleSmartED::IncomingPollReply(canbus* bus, uint16_t type, uint16_t 
       break;
     case 0x0223: // rqChargerTemperatures
       PollReply_NLG6_ChargerTemperatures(rxbuf.data(), rxbuf.size());
-      break;
+      break;*/
     // Unknown: output
     default: {
       char *buf = NULL;
