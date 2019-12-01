@@ -112,6 +112,7 @@ class OvmsVehicleSmartED : public OvmsVehicle
     void calcBusAktivity(bool state, uint8_t pos);
     void HandleChargingStatus();
     void PollReply_BMS_BattVolts(const char* reply_data, uint16_t reply_len);
+    void PollReply_BMS_BattCapacity(const char* reply_data, uint16_t reply_len);
     void PollReply_BMS_BattTemp(const char* reply_data, uint16_t reply_len);
     void PollReply_BMS_ModuleTemp(const char* reply_data, uint16_t reply_len);
     void PollReply_NLG6_ChargerPN_HW(const char* reply_data, uint16_t reply_len);
@@ -174,7 +175,53 @@ class OvmsVehicleSmartED : public OvmsVehicle
     #define MAX_POLL_DATA_LEN 238
     #define CELLCOUNT 93
     #define SE_CANDATA_TIMEOUT 10
+
+  // BMS helpers
+  protected:
+    float* m_bms_capacitys;                   // BMS Capacity (current value)
+    float* m_bms_cmins;                       // BMS minimum Capacity seen (since reset)
+    float* m_bms_cmaxs;                       // BMS maximum Capacity seen (since reset)
+    float* m_bms_cdevmaxs;                    // BMS maximum capacity deviations seen (since reset)
+    short* m_bms_calerts;                     // BMS capacity deviation alerts (since reset)
+    int m_bms_calerts_new;                    // BMS new capacity alerts since last notification
+    bool m_bms_has_capacitys;                 // True if BMS has a complete set of capacity values
+    std::vector<bool> m_bms_bitset_c;         // BMS tracking: true if corresponding capacity set
+    int m_bms_bitset_cc;                      // BMS tracking: count of unique capacity values set
+    int m_bms_readings_c;                     // Number of BMS capacity readings expected
+    int m_bms_readingspermodule_c;            // Number of BMS capacity readings per module
+    float m_bms_limit_cmin;                   // Minimum capacity limit (for sanity checking)
+    float m_bms_limit_cmax;                   // Maximum capacity limit (for sanity checking)
+
+  protected:
+    OvmsMetricFloat*  mt_v_bat_pack_cmin;                 // Cell capacity - weakest cell in pack [As]
+    OvmsMetricFloat*  mt_v_bat_pack_cmax;                 // Cell capacity - strongest cell in pack [As]
+    OvmsMetricFloat*  mt_v_bat_pack_cavg;                 // Cell capacity - pack average [As]
+    OvmsMetricFloat*  mt_v_bat_pack_cstddev;              // Cell capacity - current standard deviation [As]
+    OvmsMetricFloat*  mt_v_bat_pack_cstddev_max;          // Cell capacity - maximum standard deviation observed [As]
     
+    OvmsMetricVector<float>* mt_v_bat_cell_capacity;      // Cell capacity [As]
+    OvmsMetricVector<float>* mt_v_bat_cell_cmin;          // Cell minimum capacity [As]
+    OvmsMetricVector<float>* mt_v_bat_cell_cmax;          // Cell maximum capacity [As]
+    OvmsMetricVector<float>* mt_v_bat_cell_cdevmax;       // Cell maximum capacity deviation observed [As]
+    
+    OvmsMetricInt* mt_v_bat_HVoff_time;                // HighVoltage contactor off time in seconds
+    OvmsMetricInt* mt_v_bat_HV_lowcurrent;             // counter time of no current, reset e.g. with PLC heater or driving
+    OvmsMetricInt* mt_v_bat_OCVtimer;                  // counter time in seconds to reach OCV state
+    OvmsMetricInt* mt_v_bat_SOH;                       // Flag showing if degraded cells are found, or battery failure present
+    OvmsMetricInt* mt_v_bat_Cap_As_min;                // cell capacity statistics from BMS measurement cycle
+    OvmsMetricInt* mt_v_bat_Cap_As_max;                // cell capacity statistics from BMS measurement cycle
+    OvmsMetricInt* mt_v_bat_Cap_As_avg;                // cell capacity statistics from BMS measurement cycle
+    OvmsMetricInt* mt_v_bat_LastMeas_days;             // days elapsed since last successful measurement
+    OvmsMetricFloat* mt_v_bat_Cap_meas_quality;        // some sort of estimation factor??? after measurement cycle
+    OvmsMetricFloat* mt_v_bat_Cap_combined_quality;    // some sort of estimation factor??? constantly updated
+
+  protected:
+    void BmsSetCellArrangementCapacity(int readings, int readingspermodule);
+    void BmsSetCellCapacity(int index, float value);
+    void BmsRestartCellCapacitys();
+
+  public:
+    void BmsResetCellCapacitys();
 };
 
 #endif //#ifndef __VEHICLE_SMARTED_H__
