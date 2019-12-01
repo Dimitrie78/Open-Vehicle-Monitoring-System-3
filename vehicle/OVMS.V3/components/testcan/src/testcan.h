@@ -27,59 +27,30 @@
 ; THE SOFTWARE.
 */
 
-#ifndef __POWERMGMT_H__
-#define __POWERMGMT_H__
+#ifndef __TESTCAN_H__
+#define __TESTCAN_H__
 
 #include <sys/types.h>
 #include <string>
 #include <map>
-#include "ovms_command.h"
+#include <stdio.h>
+#include <string.h>
+#include "pcp.h"
+#include "can.h"
 
-#ifdef CONFIG_OVMS_COMP_WEBSERVER
-#include "ovms_webserver.h"
-#endif
 
-// Defaults
-#define POWERMGMT_MODEMOFF_DELAY      96 // hours
-#define POWERMGMT_WIFIOFF_DELAY       24 // hours
-#define POWERMGMT_12V_SHUTDOWN_DELAY  30 // minutes
-
-class powermgmt
-  {
+class testcan {
   public:
-    powermgmt();
-    virtual ~powermgmt();
+    testcan();
+    virtual ~testcan();
 
-  public:
-    void Ticker1(std::string event, void* data);
-    void ConfigChanged(std::string event, void* data);
+	private:
+		void ReadLogFileToCan( std::string path, bool send );
 
-  private:
-    bool m_enabled;
-    unsigned int m_notcharging_timer;
-    unsigned int m_12v_alert_timer;
+	public:
+		static void readfiletocan(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
+};
 
-    unsigned int m_modemoff_delay;
-    unsigned int m_wifioff_delay;
-    unsigned int m_12v_shutdown_delay;
-    bool m_charging;
-    bool m_modem_off, m_wifi_off;
+extern testcan MyTestCan;
 
-#ifdef CONFIG_OVMS_COMP_WEBSERVER
-  // --------------------------------------------------------------------------
-  // Webserver subsystem
-  //  - implementation: powermgmt_web.(h,cpp)
-  // 
-  
-  public:
-    void WebInit();
-    void WebCleanup();
-    static void WebCfgPowerManagement(PageEntry_t& p, PageContext_t& c);
-
-#endif //CONFIG_OVMS_COMP_WEBSERVER
-
-  };
-
-extern powermgmt MyPowerMgmt;
-
-#endif //#ifndef __POWERMGMT_H__
+#endif //#ifndef __TESTCAN_H__

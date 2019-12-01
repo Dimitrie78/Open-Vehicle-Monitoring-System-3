@@ -1021,6 +1021,8 @@ OvmsVehicle::OvmsVehicle()
   m_brakelight_start = 0;
   m_brakelight_basepwr = 0;
   m_brakelight_ignftbrk = false;
+  
+  m_12v_ref_autoset = true;
 
   m_rxqueue = xQueueCreate(CONFIG_OVMS_VEHICLE_CAN_RX_QUEUE_SIZE,sizeof(CAN_frame_t));
   xTaskCreatePinnedToCore(OvmsVehicleRxTask, "OVMS Vehicle",
@@ -1258,7 +1260,8 @@ void OvmsVehicle::VehicleTicker1(std::string event, void* data)
     if (m_12v_ticker == 0)
       {
       // take 12V reference voltage:
-      StandardMetrics.ms_v_bat_12v_voltage_ref->SetValue(StandardMetrics.ms_v_bat_12v_voltage->AsFloat());
+      if (m_12v_ref_autoset)
+        StandardMetrics.ms_v_bat_12v_voltage_ref->SetValue(StandardMetrics.ms_v_bat_12v_voltage->AsFloat());
       }
     }
 
@@ -1322,7 +1325,7 @@ void OvmsVehicle::VehicleTicker1(std::string event, void* data)
     }
 
   // Idle alert:
-  if (!StdMetrics.ms_v_env_awake->AsBool() || StdMetrics.ms_v_pos_speed->AsFloat() > 0)
+  if (!StdMetrics.ms_v_env_awake->AsBool() || StdMetrics.ms_v_pos_speed->AsFloat() > 0 || StdMetrics.ms_v_charge_inprogress->AsBool())
     {
     m_idle_ticker = 15 * 60; // first alert after 15 minutes
     }
@@ -1649,6 +1652,10 @@ void OvmsVehicle::VehicleConfigChanged(std::string event, void* data)
     m_brakelight_basepwr = MyConfig.GetParamValueFloat("vehicle", "brakelight.basepwr", 0);
     m_brakelight_ignftbrk = MyConfig.GetParamValueBool("vehicle", "brakelight.ignftbrk", false);
     m_brakelight_start = 0;
+    
+    // 12V reference voltage:
+    StandardMetrics.ms_v_bat_12v_voltage_ref->SetValue(MyConfig.GetParamValueFloat("vehicle", "12v.ref", 12.6));
+    m_12v_ref_autoset = MyConfig.GetParamValueBool("vehicle", "12v.ref.autoset", true);
     }
 
   // read vehicle specific config:
