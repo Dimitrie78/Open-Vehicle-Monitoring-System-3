@@ -193,8 +193,8 @@ void OvmsVehicleSmartED::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
     "<p>This determines the Ideal Range.</p>",
     "min=\"90\" max=\"200\" step=\"1\"");
   
-  c.input_checkbox("change Display SOC = SOH", "soc_rsoc", soc_rsoc,
-    "<p>WARNING: change Displayed SOC to SOH and SOH to SOC.</p>");
+  c.input_checkbox("change Display SOC = realSOC", "soc_rsoc", soc_rsoc,
+    "<p>WARNING: change Displayed SOC to realSOC.</p>");
   
   c.input_checkbox("Enable CAN write(Poll)", "canwrite", canwrite,
     "<p>Controls overall CAN write access, some functions depend on this.</p>");

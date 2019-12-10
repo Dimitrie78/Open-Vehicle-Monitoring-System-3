@@ -46,8 +46,6 @@ const PROGMEM byte rqBattHVContactorCyclesLeft[4] = {0x03, 0x22, 0x03, 0x0B};
 const PROGMEM byte rqBattHVContactorMax[4]        = {0x03, 0x22, 0x03, 0x0C};
 const PROGMEM byte rqBattHVContactorState[4]      = {0x03, 0x22, 0xD0, 0x00};
 
-const PROGMEM byte rqCarVIN[4]                   = {0x02, 0x09, 0x02, 0x00};
-
 //Experimental readouts
 const PROGMEM byte rqBattCapInit[4]               = {0x03, 0x22, 0x03, 0x05};
 const PROGMEM byte rqBattCapLoss[4]               = {0x03, 0x22, 0x03, 0x09};
@@ -92,17 +90,26 @@ static const char *TAG = "v-smarted";
 
 static const OvmsVehicle::poll_pid_t smarted_polls[] =
 {
-  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0xF111, {  0,120,999,0 } }, // rqChargerPN_HW
-  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0226, {  0,120,999,0 } }, // rqChargerVoltages
-  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0225, {  0,120,999,0 } }, // rqChargerAmps
-  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x022A, {  0,120,999,0 } }, // rqChargerSelCurrent
-  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0223, {  0,120,999,0 } }, // rqChargerTemperatures
-  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0201, {  0,300,600,0 } }, // rqBattTemperatures
-  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0202, {  0,300,600,0 } }, // rqBattModuleTemperatures
-  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0208, {  0,60,600,0 } }, // rqBattVolts
-  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0209, {  0,60,600,0 } }, // rqBattIsolation
-  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0203, {  0,60,600,0 } }, // rqBattAmps
-  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0310, {  0,60,600,0 } }, // rqBattCapacity
+  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0xF111, {  0,300,600,0 } }, // rqChargerPN_HW
+  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0226, {  0,300,0,60 } }, // rqChargerVoltages
+  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0225, {  0,300,0,60 } }, // rqChargerAmps
+  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x022A, {  0,300,0,60 } }, // rqChargerSelCurrent
+  { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0223, {  0,300,0,60 } }, // rqChargerTemperatures
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0xF190, {  0,300,600,0 } }, // rqBattVIN
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0208, {  0,300,600,0 } }, // rqBattVolts
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0310, {  0,300,600,0 } }, // rqBattCapacity
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0203, {  0,300,600,0 } }, // rqBattAmps
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0207, {  0,300,600,0 } }, // rqBattADCref
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0304, {  0,300,600,0 } }, // rqBattDate
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0xF18C, {  0,300,600,0 } }, // rqBattProdDate
+  //getBatteryRevision
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0201, {  0,300,600,120 } }, // rqBattTemperatures
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0202, {  0,300,600,120 } }, // rqBattModuleTemperatures
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x030B, {  0,300,600,0 } }, // rqBattHVContactorCyclesLeft
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x030C, {  0,300,600,0 } }, // rqBattHVContactorMax
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0xD000, {  0,300,600,0 } }, // rqBattHVContactorState
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0204, {  0,300,600,0 } }, // rqBattHVstatus
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0209, {  0,300,600,0 } }, // rqBattIsolation
   { 0, 0, 0x00, 0x00, { 0, 0, 0, 0 } }
 };
 
@@ -138,7 +145,6 @@ void OvmsVehicleSmartED::ObdInitPoll() {
   mt_v_bat_HVoff_time = new OvmsMetricInt("xse.v.b.p.hv.off.time", SM_STALE_HIGH, Seconds);
   mt_v_bat_HV_lowcurrent = new OvmsMetricInt("xse.v.b.p.hv.lowcurrent", SM_STALE_HIGH, Seconds);
   mt_v_bat_OCVtimer = new OvmsMetricInt("xse.v.b.p.ocv.timer", SM_STALE_HIGH, Seconds);
-  mt_v_bat_SOH = new OvmsMetricInt("xse.v.b.p.soh", SM_STALE_HIGH, Other);
   mt_v_bat_LastMeas_days = new OvmsMetricInt("xse.v.b.p.last.meas.days", SM_STALE_HIGH, Other);
   mt_v_bat_Cap_meas_quality = new OvmsMetricFloat("xse.v.b.p.capacity.quality", SM_STALE_HIGH, Other);
   mt_v_bat_Cap_combined_quality = new OvmsMetricFloat("xse.v.b.p.capacity.combined.quality", SM_STALE_HIGH, Other);
@@ -146,7 +152,43 @@ void OvmsVehicleSmartED::ObdInitPoll() {
   mt_v_bat_Cap_As_max = new OvmsMetricInt("xse.v.b.p.capacity.as.maximum", SM_STALE_HIGH, Other);
   mt_v_bat_Cap_As_avg = new OvmsMetricInt("xse.v.b.p.capacity.as.average", SM_STALE_HIGH, Other);
   
-  BmsSetCellArrangementCapacity(93,3);
+  mt_nlg6_present             = MyMetrics.InitBool("xse.v.nlg6.present", SM_STALE_MIN, false);
+  mt_nlg6_main_volts          = new OvmsMetricVector<float>("xse.v.nlg6.main.volts", SM_STALE_HIGH, Volts);
+  mt_nlg6_main_amps           = new OvmsMetricVector<float>("xse.v.nlg6.main.amps", SM_STALE_HIGH, Amps);
+  mt_nlg6_amps_setpoint       = MyMetrics.InitFloat("xse.v.nlg6.amps.setpoint", SM_STALE_MIN, 0, Amps);
+  mt_nlg6_amps_cablecode      = MyMetrics.InitFloat("xse.v.nlg6.amps.cablecode", SM_STALE_MIN, 0, Amps);
+  mt_nlg6_amps_chargingpoint  = MyMetrics.InitFloat("xse.v.nlg6.amps.chargingpoint", SM_STALE_MIN, 0, Amps);
+  mt_nlg6_dc_current          = MyMetrics.InitFloat("xse.v.nlg6.dc.current", SM_STALE_MIN, 0, Amps);
+  mt_nlg6_dc_hv               = MyMetrics.InitFloat("xse.v.nlg6.dc.hv", SM_STALE_MIN, 0, Volts);
+  mt_nlg6_dc_lv               = MyMetrics.InitFloat("xse.v.nlg6.dc.lv", SM_STALE_MIN, 0, Volts);
+  mt_nlg6_temps               = new OvmsMetricVector<float>("xse.v.nlg6.temps", SM_STALE_HIGH, Celcius);
+  mt_nlg6_temp_reported       = MyMetrics.InitFloat("xse.v.nlg6.temp.reported", SM_STALE_MIN, 0, Celcius);
+  mt_nlg6_temp_socket         = MyMetrics.InitFloat("xse.v.nlg6.temp.socket", SM_STALE_MIN, 0, Celcius);
+  mt_nlg6_temp_coolingplate   = MyMetrics.InitFloat("xse.v.nlg6.temp.coolingplate", SM_STALE_MIN, 0, Celcius);
+  mt_nlg6_pn_hw               = MyMetrics.InitString("xse.v.nlg6.pn.hw", SM_STALE_MIN, 0);
+  
+  mt_myBMS_Amps                = new OvmsMetricFloat("xse.mybms.amps", SM_STALE_HIGH, Amps);
+  mt_myBMS_Amps2               = new OvmsMetricFloat("xse.mybms.amps2", SM_STALE_HIGH, Amps);
+  mt_myBMS_Power               = new OvmsMetricFloat("xse.mybms.power", SM_STALE_HIGH, kW);
+  mt_myBMS_HV                  = new OvmsMetricFloat("xse.mybms.hv", SM_STALE_HIGH, Volts);
+  mt_myBMS_HVcontactCyclesLeft = new OvmsMetricInt("xse.mybms.hv.contact.cycles.left", SM_STALE_HIGH, Other);
+  mt_myBMS_HVcontactCyclesMax  = new OvmsMetricInt("xse.mybms.hv.contact.cycles.max", SM_STALE_HIGH, Other);
+  mt_myBMS_ADCCvolts_mean      = new OvmsMetricInt("xse.mybms.adc.cvolts.mean", SM_STALE_HIGH, Other);
+  mt_myBMS_ADCCvolts_min       = new OvmsMetricInt("xse.mybms.adc.cvolts.min", SM_STALE_HIGH, Other);
+  mt_myBMS_ADCCvolts_max       = new OvmsMetricInt("xse.mybms.adc.cvolts.max", SM_STALE_HIGH, Other);
+  mt_myBMS_ADCvoltsOffset      = new OvmsMetricInt("xse.mybms.adc.volts.offset", SM_STALE_HIGH, Other);
+  mt_myBMS_Isolation           = new OvmsMetricInt("xse.mybms.isolation", SM_STALE_HIGH, Other);
+  mt_myBMS_DCfault             = new OvmsMetricInt("xse.mybms.dc.fault", SM_STALE_HIGH, Other);
+  mt_myBMS_BattVIN             = new OvmsMetricString("xse.mybms.batt.vin");
+  
+  // BMS configuration:
+  BmsSetCellArrangementCapacity(93, 1);
+  BmsSetCellArrangementVoltage(93, 1);
+  BmsSetCellArrangementTemperature(9, 1);
+  BmsSetCellLimitsVoltage(2.0, 5.0);
+  BmsSetCellLimitsTemperature(-39, 200);
+  BmsSetCellDefaultThresholdsVoltage(0.030, 0.050);
+  BmsSetCellDefaultThresholdsTemperature(2.0, 3.0);
   
   // init poller:
   PollSetPidList(m_can1, smarted_polls);
@@ -161,7 +203,7 @@ void OvmsVehicleSmartED::IncomingPollReply(canbus* bus, uint16_t type, uint16_t 
   static uint16_t last_pid = -1;
   
   if (pid != last_pid) {
-    ESP_LOGD(TAG, "pid: %04x length: %d m_poll_ml_remain: %d m_poll_ml_frame: %d", pid, length, m_poll_ml_remain, m_poll_ml_frame);
+    //ESP_LOGD(TAG, "pid: %04x length: %d m_poll_ml_remain: %d m_poll_ml_frame: %d", pid, length, m_poll_ml_remain, m_poll_ml_frame);
     last_pid = pid;
     m_poll_ml_frame=0;
   }
@@ -175,12 +217,27 @@ void OvmsVehicleSmartED::IncomingPollReply(canbus* bus, uint16_t type, uint16_t 
   
   if (pid == 0xF111 && m_poll_ml_frame == 1) {
     remain=0;
-    ESP_LOGD(TAG, "End pid: %04x length: %d m_poll_ml_remain: %d m_poll_ml_frame: %d", pid, length, m_poll_ml_remain, m_poll_ml_frame);
+    //ESP_LOGD(TAG, "End pid: %04x length: %d m_poll_ml_remain: %d m_poll_ml_frame: %d", pid, length, m_poll_ml_remain, m_poll_ml_frame);
+  }
+  
+  if (pid == 0xf190 && m_poll_ml_frame == 2) {
+    remain=0;
+    //ESP_LOGD(TAG, "End pid: %04x length: %d m_poll_ml_remain: %d m_poll_ml_frame: %d", pid, length, m_poll_ml_remain, m_poll_ml_frame);
+  }
+  
+  if (pid == 0x0204 && m_poll_ml_frame == 1) {
+    remain=0;
+    //ESP_LOGD(TAG, "End pid: %04x length: %d m_poll_ml_remain: %d m_poll_ml_frame: %d", pid, length, m_poll_ml_remain, m_poll_ml_frame);
+  }
+  
+  if (pid == 0xf18c && m_poll_ml_frame == 1) {
+    remain=0;
+    //ESP_LOGD(TAG, "End pid: %04x length: %d m_poll_ml_remain: %d m_poll_ml_frame: %d", pid, length, m_poll_ml_remain, m_poll_ml_frame);
   }
   
   if ((data[5] * 256 + data[6]) == 21845) {
     remain=0;
-    ESP_LOGD(TAG, "End pid: %04x length: %d m_poll_ml_remain: %d m_poll_ml_frame: %d", pid, length, m_poll_ml_remain, m_poll_ml_frame);
+    //ESP_LOGD(TAG, "End pid: %04x length: %d m_poll_ml_remain: %d m_poll_ml_frame: %d", pid, length, m_poll_ml_remain, m_poll_ml_frame);
   }
   
   if (remain)
@@ -194,11 +251,41 @@ void OvmsVehicleSmartED::IncomingPollReply(canbus* bus, uint16_t type, uint16_t 
     case 0x0202: // rqBattModuleTemperatures
       PollReply_BMS_ModuleTemp(rxbuf.data(), rxbuf.size());
       break;
+    case 0x0203: //rqBattAmps
+      PollReply_BMS_BattAmps(rxbuf.data(), rxbuf.size());
+      break;
+    case 0x0204: //rqBattHVstatus
+      PollReply_BMS_BattHVstatus(rxbuf.data(), rxbuf.size());
+      break;
+    case 0x0207: //rqBattADCref
+      PollReply_BMS_BattADCref(rxbuf.data(), rxbuf.size());
+      break;
     case 0x0208: // rqBattVolts
       PollReply_BMS_BattVolts(rxbuf.data(), rxbuf.size());
       break;
+    case 0x0209: // rqBattIsolation
+      PollReply_BMS_BattIsolation(rxbuf.data(), rxbuf.size());
+      break;
     case 0x0310: // rqBattCapacity
       PollReply_BMS_BattCapacity(rxbuf.data(), rxbuf.size());
+      break;
+    case 0x030B: // rqBattHVContactorCyclesLeft
+      PollReply_BMS_BattHVContactorCyclesLeft(rxbuf.data(), rxbuf.size());
+      break;
+    case 0x030C: // rqBattHVContactorMax
+      PollReply_BMS_BattHVContactorMax(rxbuf.data(), rxbuf.size());
+      break;
+    case 0xD000: // rqBattHVContactorState
+      PollReply_BMS_BattHVContactorState(rxbuf.data(), rxbuf.size());
+      break;
+    case 0x0304: // rqBattDate
+      PollReply_BMS_BattDate(rxbuf.data(), rxbuf.size());
+      break;
+    case 0xF18C: // rqBattProdDate
+      PollReply_BMS_BattProdDate(rxbuf.data(), rxbuf.size());
+      break;
+    case 0xF190: // rqBattVIN
+      PollReply_BMS_BattVIN(rxbuf.data(), rxbuf.size());
       break;
     case 0xF111: // rqChargerPN_HW
       PollReply_NLG6_ChargerPN_HW(rxbuf.data(), rxbuf.size());
@@ -231,39 +318,95 @@ void OvmsVehicleSmartED::IncomingPollReply(canbus* bus, uint16_t type, uint16_t 
   }
 }
 
-void OvmsVehicleSmartED::PollReply_BMS_BattTemp(const char* reply_data, uint16_t reply_len) {
-  int16_t Temps[7];
-  int n;
-  
-  for(n = 0; n < (7 * 2); n = n + 2){
-    Temps[n/2] = ((reply_data[n + 1] * 256 + reply_data[n + 2]));
+void OvmsVehicleSmartED::PollReply_BMS_BattAmps(const char* reply_data, uint16_t reply_len) {
+  float value = reply_data[0] * 256 + reply_data[1];
+  mt_myBMS_Amps->SetValue(value);
+  mt_myBMS_Amps2->SetValue(value / 32.0);
+  mt_myBMS_Power->SetValue(StdMetrics.ms_v_bat_voltage->AsFloat() * mt_myBMS_Amps2->AsFloat()  / 1000.0);
+}
+
+void OvmsVehicleSmartED::PollReply_BMS_BattHVstatus(const char* reply_data, uint16_t reply_len) {
+  float value = reply_data[9] * 256 + reply_data[10];
+  if(HVcontactState != 0x02) {
+    mt_myBMS_HV->SetValue((float) value/64.0);
   }
-  if (Temps[0]/64 != -512)
-    StandardMetrics.ms_v_bat_temp->SetValue(Temps[0]/64);
+}
+
+void OvmsVehicleSmartED::PollReply_BMS_BattHVContactorCyclesLeft(const char* reply_data, uint16_t reply_len) {
+  mt_myBMS_HVcontactCyclesLeft->SetValue((unsigned long) reply_data[1] * 65536 + (uint16_t) reply_data[2] * 256 + reply_data[3]); 
+}
+
+void OvmsVehicleSmartED::PollReply_BMS_BattHVContactorMax(const char* reply_data, uint16_t reply_len) {
+  mt_myBMS_HVcontactCyclesMax->SetValue((unsigned long) reply_data[1] * 65536 + (uint16_t) reply_data[2] * 256 + reply_data[3]); 
+}
+
+void OvmsVehicleSmartED::PollReply_BMS_BattHVContactorState(const char* reply_data, uint16_t reply_len) {
+  HVcontactState = (uint16_t) reply_data[0]; 
+}
+
+void OvmsVehicleSmartED::PollReply_BMS_BattADCref(const char* reply_data, uint16_t reply_len) {
+  mt_myBMS_ADCCvolts_mean->SetValue(reply_data[5] * 256 + reply_data[6]);
+  mt_myBMS_ADCCvolts_min->SetValue(reply_data[3] * 256 + reply_data[4] + 1500);
+  mt_myBMS_ADCCvolts_max->SetValue(reply_data[1] * 256 + reply_data[2] + 1500);
+  
+  if (RAW_VOLTAGES) {
+    mt_myBMS_ADCvoltsOffset->SetValue(0);
+  } else {
+    mt_myBMS_ADCvoltsOffset->SetValue(StdMetrics.ms_v_bat_pack_vavg->AsFloat()*1000 - mt_myBMS_ADCCvolts_mean->AsInt());
+  }
+}
+
+void OvmsVehicleSmartED::PollReply_BMS_BattDate(const char* reply_data, uint16_t reply_len) {
+  myBMS_Year = reply_data[1];
+  myBMS_Month = reply_data[2];
+  myBMS_Day = reply_data[3];
+}
+
+void OvmsVehicleSmartED::PollReply_BMS_BattProdDate(const char* reply_data, uint16_t reply_len) {
+  myBMS_ProdYear = (reply_data[1] - 48) * 10 + (reply_data[2] - 48);
+  myBMS_ProdMonth = (reply_data[3] - 48) * 10 + (reply_data[4] - 48);
+  myBMS_ProdDay = (reply_data[5] - 48) * 10 + (reply_data[6] - 48);
+}
+
+void OvmsVehicleSmartED::PollReply_BMS_BattIsolation(const char* reply_data, uint16_t reply_len) {
+  uint16_t value = reply_data[1] * 256 + reply_data[2];//this->ReadDiagWord(&value,data,4,1);
+  mt_myBMS_Isolation->SetValue((signed) value);
+  mt_myBMS_DCfault->SetValue(reply_data[3]);
+}
+
+void OvmsVehicleSmartED::PollReply_BMS_BattVIN(const char* reply_data, uint16_t reply_len) {
+  char vin[18];
+  memset(vin, 0, sizeof(vin));
+  for(int n = 0; n < 17; n++) {
+    vin[n] = reply_data[n + 1];
+  }
+  mt_myBMS_BattVIN->SetValue(vin);
+}
+
+void OvmsVehicleSmartED::PollReply_BMS_BattTemp(const char* reply_data, uint16_t reply_len) {
+  for(uint16_t n = 0; n < (7 * 2); n = n + 2){
+    myBMS_Temps[n/2] = ((reply_data[n + 1] * 256 + reply_data[n + 2]));
+  }
+  //Copy max, min, mean and coolant-in temp to end of array
+  for(uint16_t n = 0; n < 4; n++) {
+    myBMS_Temps[n + 9] = myBMS_Temps[n];
+  }
+  if (myBMS_Temps[0]/64 != -512)
+    StandardMetrics.ms_v_bat_temp->SetValue((float) myBMS_Temps[0]/64);
 }
 
 void OvmsVehicleSmartED::PollReply_BMS_ModuleTemp(const char* reply_data, uint16_t reply_len) {
-  int16_t Temps[13];
-  int n;
-  int i;
-
-  for(n = 0; n < (9 * 2); n = n + 2){
-    Temps[n/2] = ((reply_data[n + 1] * 256 + reply_data[n + 2]));
-  }
-  for (n = 0; n < 9; n = n + 3) {
-    for (i = 0; i < 3; i++) {
-      if (i==2) BmsSetCellTemperature(n/3, (float) Temps[n + i]/64);
-    }
+  for(uint16_t n = 0; n < (9 * 2); n = n + 2){
+    myBMS_Temps[n/2] = ((reply_data[n + 1] * 256 + reply_data[n + 2]));
+    BmsSetCellTemperature(n/2, (float) myBMS_Temps[n/2]/64);
   }
 }
 
 void OvmsVehicleSmartED::PollReply_BMS_BattVolts(const char* reply_data, uint16_t reply_len) {
-  int n;
-  
-  for(n = 0; n < (CELLCOUNT * 2); n = n + 2){
+  for(uint16_t n = 0; n < (CELLCOUNT * 2); n = n + 2){
     float Cells = (reply_data[n + 1] * 256 + reply_data[n + 2]);
     BmsSetCellVoltage(n/2, Cells/1000);
-  } 
+  }
 }
 
 void OvmsVehicleSmartED::PollReply_BMS_BattCapacity(const char* reply_data, uint16_t reply_len) {
@@ -278,7 +421,7 @@ void OvmsVehicleSmartED::PollReply_BMS_BattCapacity(const char* reply_data, uint
   mt_v_bat_HVoff_time->SetValue( reply_data[2] * 65535 + (uint16_t) reply_data[3] * 256 + reply_data[4] );
   mt_v_bat_HV_lowcurrent->SetValue( (unsigned long) reply_data[6] * 65535 + (uint16_t) reply_data[7] * 256 + reply_data[8] );
   mt_v_bat_OCVtimer->SetValue( (uint16_t) reply_data[9] * 256 + reply_data[10] );
-  mt_v_bat_SOH->SetValue( reply_data[11] );
+  myBMS_SOH = reply_data[11];
   mt_v_bat_Cap_As_min->SetValue( reply_data[18] * 256 + reply_data[19] );
   mt_v_bat_Cap_As_avg->SetValue( reply_data[20] * 256 + reply_data[21] );
   mt_v_bat_Cap_As_max->SetValue( reply_data[14] * 256 + reply_data[15] );
@@ -288,7 +431,6 @@ void OvmsVehicleSmartED::PollReply_BMS_BattCapacity(const char* reply_data, uint
   mt_v_bat_Cap_meas_quality->SetValue( value / 65535.0 );
   value = reply_data[422] * 256 + reply_data[423];
   mt_v_bat_Cap_combined_quality->SetValue( value / 65535.0 );
-  
 }
 
 void OvmsVehicleSmartED::PollReply_NLG6_ChargerPN_HW(const char* reply_data, uint16_t reply_len) {
@@ -471,6 +613,7 @@ void OvmsVehicleSmartED::BmsSetCellCapacity(int index, float value) {
     mt_v_bat_cell_cmin->SetElemValues(0, m_bms_readings_c, m_bms_cmins);
     mt_v_bat_cell_cmax->SetElemValues(0, m_bms_readings_c, m_bms_cmaxs);
     mt_v_bat_cell_cdevmax->SetElemValues(0, m_bms_readings_c, m_bms_cdevmaxs);
+    StandardMetrics.ms_v_bat_soh->SetValue((min/360.0)*1.9230769);
     // complete:
     m_bms_has_capacitys = true;
     m_bms_bitset_c.clear();
@@ -504,4 +647,231 @@ void OvmsVehicleSmartED::BmsResetCellCapacitys() {
     mt_v_bat_cell_cdevmax->ClearValue();
     mt_v_bat_pack_cstddev_max->SetValue(mt_v_bat_pack_cstddev->AsFloat());
   }
+}
+
+void OvmsVehicleSmartED::BmsDiag(int verbosity, OvmsWriter* writer) {
+  //int c;
+
+  if (!m_bms_has_capacitys) {
+    writer->puts("No BMS status data available");
+    return;
+  }
+  
+  writer->puts("-------------------------------------------");
+  writer->puts("---- ED Battery Management Diagnostics ----");
+  writer->puts("-------------------------------------------");
+  
+  writer->printf("SOC : %2.1f %, realSOC: %2.1f %\n", StdMetrics.ms_v_bat_soc->AsFloat(), StdMetrics.ms_v_bat_soh->AsFloat());
+  writer->printf("HV  : %3.1f V, %.2f A, %0.2f kW\n", StdMetrics.ms_v_bat_voltage->AsFloat(), StdMetrics.ms_v_bat_current->AsFloat(), StdMetrics.ms_v_bat_power->AsFloat());
+  writer->printf("LV  : %2.1f V\n", StdMetrics.ms_v_bat_12v_voltage->AsFloat());
+  
+  writer->puts("-------------------------------------------");
+  
+  writer->printf("CV mean : %5.0f mV, dV = %.2f mV\n", StdMetrics.ms_v_bat_pack_vavg->AsFloat()*1000, StdMetrics.ms_v_bat_pack_vstddev_max->AsFloat()*1000);
+  writer->printf("CV min  : %5.0f mV\n", StdMetrics.ms_v_bat_pack_vmin->AsFloat()*1000);
+  writer->printf("CV max  : %5.0f mV\n", StdMetrics.ms_v_bat_pack_vmax->AsFloat()*1000);
+  writer->printf("OCVtimer: %d s\n", mt_v_bat_OCVtimer->AsInt());
+  
+  writer->puts("-------------------------------------------");
+  
+  writer->printf("Last measurement      : %d day(s)\n", mt_v_bat_LastMeas_days->AsInt());
+  writer->printf("Measurement estimation: %.3f\n", mt_v_bat_Cap_meas_quality->AsFloat());
+  writer->printf("Actual estimation     : %.3f\n", mt_v_bat_Cap_combined_quality->AsFloat());
+  writer->printf("CAP mean: %5.0f As/10, %2.1f Ah\n", mt_v_bat_Cap_As_avg->AsFloat(), mt_v_bat_Cap_As_avg->AsFloat()/360.0);
+  writer->printf("CAP min : %5.0f As/10, %2.1f Ah\n", mt_v_bat_Cap_As_min->AsFloat(), mt_v_bat_Cap_As_min->AsFloat()/360.0);
+  writer->printf("CAP max : %5.0f As/10, %2.1f Ah\n", mt_v_bat_Cap_As_max->AsFloat(), mt_v_bat_Cap_As_max->AsFloat()/360.0);
+  
+  writer->puts("-------------------------------------------");
+  
+  writer->printf("HV contactor ");
+  if (HVcontactState == 0x02) {
+    writer->printf("state ON");
+    writer->printf(", low current: %d s\n", mt_v_bat_HV_lowcurrent->AsInt());
+  } else if (HVcontactState == 0x00) {
+    writer->printf("state OFF");
+    writer->printf(", for: %d s\n", mt_v_bat_HVoff_time->AsInt());
+  }
+  writer->printf("Cycles left   : %d\n", mt_myBMS_HVcontactCyclesLeft->AsInt());
+  writer->printf("of max. cycles: %d\n", mt_myBMS_HVcontactCyclesMax->AsInt());
+  writer->printf("DC isolation  : %d kOhm, ", mt_myBMS_Isolation->AsInt());
+  if (mt_myBMS_DCfault->AsInt() == 0) {
+    writer->puts("OK");
+  } else {
+    writer->puts("DC FAULT");
+  }
+  
+  writer->puts("-------------------------------------------");
+  
+  writer->puts("Temperatures Battery-Unit /degC: ");
+  for (uint16_t n = 0; n < 9; n = n + 3) {
+    writer->printf("module %d: ", (n / 3) + 1);
+    for (uint16_t i = 0; i < 3; i++) {
+      writer->printf("%.1f", (float) myBMS_Temps[n + i] / 64);
+      if ( i < 2) {
+        writer->printf(", ");
+      } else {
+        writer->puts("");
+      }
+    }
+  }
+  writer->printf("   mean : %.1f", (float) myBMS_Temps[11] / 64);
+  writer->printf(", min : %.1f", (float) myBMS_Temps[10] / 64);
+  writer->printf(", max : %.1f\n", (float) myBMS_Temps[9] / 64);
+  writer->printf("coolant : %.1f\n", (float) myBMS_Temps[12] / 64);
+  
+  writer->puts("-------------------------------------------");
+  
+  writer->puts(" # ;mV   ;As/10");
+  for(int16_t n = 0; n < CELLCOUNT; n++){
+    writer->printf("%3d; %4.0f; %5.0f\n", n+1, m_bms_voltages[n]*1000 - mt_myBMS_ADCvoltsOffset->AsInt(), m_bms_capacitys[n]);
+  }
+  writer->puts("-------------------------------------------");
+  writer->puts("Individual Cell Statistics:");
+  writer->puts("-------------------------------------------");
+  writer->printf("CV mean : %4.0f mV", StdMetrics.ms_v_bat_pack_vavg->AsFloat()*1000 - mt_myBMS_ADCvoltsOffset->AsInt());
+  writer->printf(", dV= %.0f mV", StdMetrics.ms_v_bat_pack_vmax->AsFloat()*1000 - StdMetrics.ms_v_bat_pack_vmin->AsFloat()*1000);
+  writer->printf(", s= %.2f mV\n", StdMetrics.ms_v_bat_pack_vstddev->AsFloat()*1000);
+  writer->printf("CV min  : %4.0f mV, # \n", StdMetrics.ms_v_bat_pack_vmin->AsFloat()*1000 - mt_myBMS_ADCvoltsOffset->AsInt());// Serial.print(F(" mV, # ")); Serial.println(BMS.CV_min_at + 1);
+  writer->printf("CV max  : %4.0f mV, # \n", StdMetrics.ms_v_bat_pack_vmax->AsFloat()*1000 - mt_myBMS_ADCvoltsOffset->AsInt());// Serial.print(F(" mV, # ")); Serial.println(BMS.CV_max_at + 1);
+  writer->puts("-------------------------------------------");
+  writer->printf("CAP mean: %5.0f As/10, %2.1f Ah\n", mt_v_bat_pack_cavg->AsFloat(), mt_v_bat_pack_cavg->AsFloat() / 360.0);
+  writer->printf("CAP min : %5.0f As/10, %2.1f Ah, # \n", mt_v_bat_pack_cmin->AsFloat(), mt_v_bat_pack_cmin->AsFloat() / 360.0);// Serial.println(BMS.CAP_min_at + 1);
+  writer->printf("CAP max : %5.0f As/10, %2.1f Ah, # \n", mt_v_bat_pack_cmax->AsFloat(), mt_v_bat_pack_cmax->AsFloat() / 360.0);// Serial.println(BMS.CAP_max_at + 1);
+  writer->puts("-------------------------------------------");
+/*
+  int vwarn=0, valert=0;
+  int twarn=0, talert=0;
+  for (c=0; c<m_bms_readings_v; c++) {
+    if (m_bms_valerts[c]==1) vwarn++;
+    if (m_bms_valerts[c]==2) valert++;
+  }
+  for (c=0; c<m_bms_readings_t; c++) {
+    if (m_bms_talerts[c]==1) twarn++;
+    if (m_bms_talerts[c]==2) talert++;
+  }
+
+  writer->puts("Voltage:");
+  writer->printf("    Average: %5.3fV [%5.3fV - %5.3fV]\n",
+    StdMetrics.ms_v_bat_pack_vavg->AsFloat(),
+    StdMetrics.ms_v_bat_pack_vmin->AsFloat(),
+    StdMetrics.ms_v_bat_pack_vmax->AsFloat());
+  writer->printf("  Deviation: SD %6.2fmV [max %.2fmV], %d warnings, %d alerts\n",
+    StdMetrics.ms_v_bat_pack_vstddev->AsFloat()*1000,
+    StdMetrics.ms_v_bat_pack_vstddev_max->AsFloat()*1000,
+    vwarn, valert);
+
+  writer->puts("Temperature:");
+  writer->printf("    Average: %5.1fC [%5.1fC - %5.1fC]\n",
+    StdMetrics.ms_v_bat_pack_tavg->AsFloat(),
+    StdMetrics.ms_v_bat_pack_tmin->AsFloat(),
+    StdMetrics.ms_v_bat_pack_tmax->AsFloat());
+  writer->printf("  Deviation: SD %6.2fC  [max %.2fC], %d warnings, %d alerts\n",
+    StdMetrics.ms_v_bat_pack_tstddev->AsFloat(),
+    StdMetrics.ms_v_bat_pack_tstddev_max->AsFloat(),
+    twarn, talert);
+  
+  writer->puts("Cells:");
+  int kv = 0;
+  int kt = 0;
+  for (int module = 0; module < (m_bms_readings_v/m_bms_readingspermodule_v); module++)
+    {
+    writer->printf("    +");
+    for (c=0;c<m_bms_readingspermodule_v;c++) { writer->printf("-------"); }
+    writer->printf("-+");
+    for (c=0;c<m_bms_readingspermodule_c;c++) { writer->printf("------------"); }
+    writer->puts("-+");
+    writer->printf("%3d |",module+1);
+    for (c=0; c<m_bms_readingspermodule_v; c++)
+      {
+      writer->printf(" %5.3fV",m_bms_voltages[kv++]);
+      }
+    writer->printf(" |");
+    for (c=0; c<m_bms_readingspermodule_c; c++)
+      {
+      writer->printf(" %5.0f As/10",m_bms_capacitys[kt++]);
+      }
+    writer->puts(" |");
+    }
+
+  writer->printf("    +");
+  for (c=0;c<m_bms_readingspermodule_v;c++) { writer->printf("-------"); }
+  writer->printf("-+");
+  for (c=0;c<m_bms_readingspermodule_c;c++) { writer->printf("-------"); }
+  writer->puts("-+");
+*/
+}
+
+//--------------------------------------------------------------------------------
+//! \brief   Output BMS dataset
+//--------------------------------------------------------------------------------
+void OvmsVehicleSmartED::printRPTdata(int verbosity, OvmsWriter* writer) {
+  writer->puts("-----------------------------------------");
+  writer->puts("---       Battery Status Report       ---");
+  writer->puts("-----------------------------------------");
+  //printBatteryProductionData(true);
+  writer->printf("realSOC          : %2.1f %\n", StdMetrics.ms_v_bat_soh->AsFloat());
+  writer->printf("SOC              : %2.1f %\n", StdMetrics.ms_v_bat_soc->AsFloat());
+  writer->printf("Charged capacity : %2.1f Ah\n", mt_v_bat_pack_cmin->AsFloat()/360.0);// writer->printf(" Ah, min. Cell# "); Serial.println(BMS.CAP_min_at + 1);
+  writer->printf("BMS estimate     : %2.1f Ah, value @25degC\n", mt_v_bat_Cap_As_min->AsFloat()/360.0);
+  writer->printf("Measurement done : %d day(s) ago\n", mt_v_bat_LastMeas_days->AsInt());
+  if (mt_v_bat_LastMeas_days->AsInt() > 21) writer->puts("* Watch timer for OCV state, redo test! *");
+  writer->printf("Estimation factor: %.3f", mt_v_bat_Cap_meas_quality->AsFloat());
+  if (mt_v_bat_Cap_meas_quality->AsFloat() >= 0.85) {
+    writer->puts(", excellent");
+  } else if (mt_v_bat_Cap_meas_quality->AsFloat() >= 0.82) {
+    writer->puts(", very good");
+  } else if (mt_v_bat_Cap_meas_quality->AsFloat() >= 0.80) {
+    writer->puts(", good");
+  } else if (mt_v_bat_Cap_meas_quality->AsFloat() >= 0.78) {
+    writer->puts(", fair");
+    writer->puts("* need >>dSOC, start test below 20% SOC *");
+  } else {
+    writer->puts(", poor!");
+    writer->puts("*** Don't trust and redo measurement! ***");
+  }
+  writer->puts(" ");
+  writer->printf("OCV timer        : %d s, ", mt_v_bat_OCVtimer->AsInt());
+  writer->printf("@%.1f degC\n", (float) myBMS_Temps[11] / 64);
+  writer->printf("OCV state        : ");
+  
+  if (HVcontactState == 0x02) {
+    writer->puts("HV ON, can't meas. OCV");
+  } else if (HVcontactState == 0x00) {  
+    if (mt_v_bat_HVoff_time->AsInt() < mt_v_bat_OCVtimer->AsInt()) {
+      writer->printf("wait for ");
+      uint16_t dTime = mt_v_bat_OCVtimer->AsInt() - mt_v_bat_HVoff_time->AsInt();
+      if (dTime > 3600) {
+        if ((dTime / 3600) < 10) writer->printf("0");
+        writer->printf("%d", dTime / 3600); writer->printf(":"); 
+        if (((dTime % 3600) / 60) < 10) writer->printf("0");
+        writer->printf("%d", (dTime % 3600) / 60); writer->puts(" [hh:mm]");
+      } else if (dTime > 60) {
+        if ((dTime / 60) < 10) writer->printf("0");
+        writer->printf("%d", dTime / 60); writer->printf(":"); 
+        if ((dTime % 60) < 10) writer->printf("0");
+        writer->printf("%d", dTime % 60); writer->puts(" [mm:ss]");
+      } else {
+        writer->printf("%d", dTime); writer->puts(" s");
+      }
+    } else {
+      if (StdMetrics.ms_v_bat_soc->AsFloat() <= 20) {
+        writer->puts("Ready for cap. meas. !");
+      } else {
+        writer->puts("OK");
+      }
+    }
+  }
+  writer->puts(" ");
+  writer->printf("DC isolation     : %d kOhm ", mt_myBMS_Isolation->AsInt());
+  if (mt_myBMS_DCfault->AsInt() == 0) {
+    writer->puts("OK");
+  } else {
+    writer->puts("DC FAULT");
+  }
+  writer->puts(" ");
+  //DiagCAN.getBatteryVoltageDist(&BMS);  //Sort cell voltages rising up and calc. quartiles
+                                        //!!! after sorting track of individual cells is lost -> redo ".getBatteryVoltages" !!!
+  //printVoltageDistribution();           //Print statistic data as boxplot
+  //PrintSPACER();
+  
 }

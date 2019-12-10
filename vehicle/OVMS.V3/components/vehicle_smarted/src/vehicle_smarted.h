@@ -86,11 +86,15 @@ class OvmsVehicleSmartED : public OvmsVehicle
     virtual vehicle_command_t CommandActivateValet(const char* pin);
     virtual vehicle_command_t CommandDeactivateValet(const char* pin);
     virtual vehicle_command_t CommandTrip(int verbosity, OvmsWriter* writer);
+    void BmsDiag(int verbosity, OvmsWriter* writer);
+    void printRPTdata(int verbosity, OvmsWriter* writer);
 
   public:
     static void xse_recu(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
     static void xse_chargetimer(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
     static void xse_trip(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
+    static void xse_bmsdiag(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
+    static void xse_RPTdata(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
 
   protected:
     int m_reboot_ticker;
@@ -111,10 +115,20 @@ class OvmsVehicleSmartED : public OvmsVehicle
     int  calcMinutesRemaining(float target, float charge_voltage, float charge_current);
     void calcBusAktivity(bool state, uint8_t pos);
     void HandleChargingStatus();
+    void PollReply_BMS_BattAmps(const char* reply_data, uint16_t reply_len);
+    void PollReply_BMS_BattHVstatus(const char* reply_data, uint16_t reply_len);
+    void PollReply_BMS_BattHVContactorCyclesLeft(const char* reply_data, uint16_t reply_len);
+    void PollReply_BMS_BattHVContactorMax(const char* reply_data, uint16_t reply_len);
+    void PollReply_BMS_BattHVContactorState(const char* reply_data, uint16_t reply_len);
+    void PollReply_BMS_BattADCref(const char* reply_data, uint16_t reply_len);
     void PollReply_BMS_BattVolts(const char* reply_data, uint16_t reply_len);
     void PollReply_BMS_BattCapacity(const char* reply_data, uint16_t reply_len);
     void PollReply_BMS_BattTemp(const char* reply_data, uint16_t reply_len);
     void PollReply_BMS_ModuleTemp(const char* reply_data, uint16_t reply_len);
+    void PollReply_BMS_BattDate(const char* reply_data, uint16_t reply_len);
+    void PollReply_BMS_BattProdDate(const char* reply_data, uint16_t reply_len);
+    void PollReply_BMS_BattIsolation(const char* reply_data, uint16_t reply_len);
+    void PollReply_BMS_BattVIN(const char* reply_data, uint16_t reply_len);
     void PollReply_NLG6_ChargerPN_HW(const char* reply_data, uint16_t reply_len);
     void PollReply_NLG6_ChargerVoltages(const char* reply_data, uint16_t reply_len);
     void PollReply_NLG6_ChargerAmps(const char* reply_data, uint16_t reply_len);
@@ -132,6 +146,7 @@ class OvmsVehicleSmartED : public OvmsVehicle
     OvmsMetricFloat *mt_bat_energy_used_start;  // display enery used/100km
     OvmsMetricFloat *mt_bat_energy_used_reset;  // display enery used/100km
     OvmsMetricFloat *mt_pos_odometer_start;     // ODOmeter at Start
+    OvmsMetricFloat *mt_real_soc;               // real state of charge
 
   private:
     unsigned int m_candata_timer;
@@ -152,6 +167,16 @@ class OvmsVehicleSmartED : public OvmsVehicle
     bool m_notify_trip;                     // Notify Trip values after driving end (default=true)
     int m_preclima_time;                    // pre clima time (default=15 minutes)
     int m_reboot_time;                      // Reboot time
+    
+    uint16_t HVcontactState;                // contactor state: 0 := OFF, 2 := ON
+    uint16_t myBMS_Year;                    // year of battery final testing
+    uint16_t myBMS_Month;                   // month of battery final testing
+    uint16_t myBMS_Day;                     // day of battery final testing
+    uint16_t myBMS_ProdYear;                // year of battery production
+    uint16_t myBMS_ProdMonth;               // month of battery production
+    uint16_t myBMS_ProdDay;                 // day of battery production
+    uint16_t myBMS_SOH;                     // Flag showing if degraded cells are found, or battery failure present
+    int16_t myBMS_Temps[13];                // three temperatures per battery unit (1 to 3)
 
   protected:
     char NLG6_PN_HW[11] = "4519822221";           //!< Part number for NLG6 fast charging hardware
@@ -169,11 +194,29 @@ class OvmsVehicleSmartED : public OvmsVehicle
     OvmsMetricFloat *mt_nlg6_temp_socket;         //!< temperature of mains socket charger
     OvmsMetricFloat *mt_nlg6_temp_coolingplate;   //!< temperature of cooling plate 
     OvmsMetricString *mt_nlg6_pn_hw;              //!< Part number of base hardware (wo revisioning)
+    
+    OvmsMetricFloat* mt_myBMS_Amps;               //!< battery current in ampere (x/32) reported by by BMS
+    OvmsMetricFloat* mt_myBMS_Amps2;              //!< battery current in ampere read by live data on CAN or from BMS
+    OvmsMetricFloat* mt_myBMS_Power;              //!< power as product of voltage and amps in kW
+    
+    OvmsMetricFloat* mt_myBMS_HV;                 //!< total voltage of HV system in V
+    OvmsMetricInt* mt_myBMS_HVcontactCyclesLeft;  //!< counter related to ON/OFF cyles of the car
+    OvmsMetricInt* mt_myBMS_HVcontactCyclesMax;   //!< static, seems to be maxiumum of contactor cycles 
+    
+    OvmsMetricInt* mt_myBMS_ADCCvolts_mean;       //!< average cell voltage in mV, no offset
+    OvmsMetricInt* mt_myBMS_ADCCvolts_min;        //!< minimum cell voltages in mV, add offset +1500
+    OvmsMetricInt* mt_myBMS_ADCCvolts_max;        //!< maximum cell voltages in mV, add offset +1500
+    OvmsMetricInt* mt_myBMS_ADCvoltsOffset;       //!< calculated offset between RAW cell voltages and ADCref, about 90mV
+    
+    OvmsMetricInt* mt_myBMS_Isolation;            //!< Isolation in DC path, resistance in kOhm
+    OvmsMetricInt* mt_myBMS_DCfault;              //!< Flag to show DC-isolation fault
+    
+    OvmsMetricString* mt_myBMS_BattVIN;           //!< VIN stored in BMS
 
     #define DEFAULT_BATTERY_CAPACITY 17600
-    #define DEFAULT_BATTERY_AMPHOURS 53
-    #define MAX_POLL_DATA_LEN 238
+    #define DEFAULT_BATTERY_AMPHOURS 52
     #define CELLCOUNT 93
+    #define RAW_VOLTAGES 0                        //!< Use RAW values or calc ADC offset voltage
     #define SE_CANDATA_TIMEOUT 10
 
   // BMS helpers
@@ -207,7 +250,6 @@ class OvmsVehicleSmartED : public OvmsVehicle
     OvmsMetricInt* mt_v_bat_HVoff_time;                // HighVoltage contactor off time in seconds
     OvmsMetricInt* mt_v_bat_HV_lowcurrent;             // counter time of no current, reset e.g. with PLC heater or driving
     OvmsMetricInt* mt_v_bat_OCVtimer;                  // counter time in seconds to reach OCV state
-    OvmsMetricInt* mt_v_bat_SOH;                       // Flag showing if degraded cells are found, or battery failure present
     OvmsMetricInt* mt_v_bat_Cap_As_min;                // cell capacity statistics from BMS measurement cycle
     OvmsMetricInt* mt_v_bat_Cap_As_max;                // cell capacity statistics from BMS measurement cycle
     OvmsMetricInt* mt_v_bat_Cap_As_avg;                // cell capacity statistics from BMS measurement cycle

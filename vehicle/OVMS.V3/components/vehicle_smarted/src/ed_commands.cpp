@@ -122,6 +122,28 @@ void OvmsVehicleSmartED::xse_trip(int verbosity, OvmsWriter* writer, OvmsCommand
   smart->CommandTrip(verbosity, writer);
 }
 
+/**
+ * Show BMS diag values.
+ */
+void OvmsVehicleSmartED::xse_bmsdiag(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv) {
+  OvmsVehicleSmartED* smart = GetInstance(writer);
+  if (!smart)
+    return;
+	
+  smart->BmsDiag(verbosity, writer);
+}
+
+/**
+ * Show BMS diag values.
+ */
+void OvmsVehicleSmartED::xse_RPTdata(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv) {
+  OvmsVehicleSmartED* smart = GetInstance(writer);
+  if (!smart)
+    return;
+	
+  smart->printRPTdata(verbosity, writer);
+}
+
 bool OvmsVehicleSmartED::CommandSetRecu(bool on) {
   if(!m_enable_write)
     return false;
@@ -404,6 +426,7 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandStat(int verbosity, Ov
     }
 
   writer->printf("SOC: %s\n", (char*) StdMetrics.ms_v_bat_soc->AsUnitString("-", Native, 1).c_str());
+  writer->printf("realSOC: %s\n", (char*) mt_real_soc->AsUnitString("-", Native, 1).c_str());
 
   const char* range_ideal = StdMetrics.ms_v_bat_range_ideal->AsUnitString("-", rangeUnit, 0).c_str();
   if (*range_ideal != '-')
