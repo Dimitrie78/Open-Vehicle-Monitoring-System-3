@@ -308,7 +308,7 @@ void OvmsWebServer::HandleShell(PageEntry_t& p, PageContext_t& c)
 
   c.panel_start("primary panel-minpad", "Shell"
     "<div class=\"pull-right checkbox\" style=\"margin: 0;\">"
-      "<label><input type=\"checkbox\" id=\"logmonitor\" checked> Log Monitor</label>"
+      "<label><input type=\"checkbox\" id=\"logmonitor\" checked accesskey=\"L\"> <u>L</u>og Monitor</label>"
     "</div>");
 
   c.printf(
@@ -326,19 +326,25 @@ void OvmsWebServer::HandleShell(PageEntry_t& p, PageContext_t& c)
 
   c.print(
     "<script>(function(){"
-    "var $output = $('#output');"
+    "var $output = $('#output'), $command = $('#input-command');"
+    "var add_output = function(addhtml) {"
+      "var autoscroll = ($output.get(0).scrollTop + $output.innerHeight()) >= $output.get(0).scrollHeight;"
+      "$output.append(addhtml);"
+      "if (autoscroll) $output.scrollTop($output.get(0).scrollHeight);"
+    "};"
     "var htmsg = \"\";"
     "for (msg of loghist)"
-      "htmsg += '<div class=\"log log-'+msg[0]+'\">'+msg+'</div>';"
+      "htmsg += '<div class=\"log log-'+msg[0]+'\">'+msg.replace(/(\\S)\\|+(\\S)/g, \"$1\\n……: $2\")+'</div>';"
     "$output.html(htmsg);"
     "$output.on(\"msg:log\", function(ev, msg){"
       "if (!$(\"#logmonitor\").prop(\"checked\")) return;"
-      "htmsg = '<div class=\"log log-'+msg[0]+'\">'+msg+'</div>';"
+      "var autoscroll = ($output.get(0).scrollTop + $output.innerHeight()) >= $output.get(0).scrollHeight;"
+      "htmsg = '<div class=\"log log-'+msg[0]+'\">'+msg.replace(/(\\S)\\|+(\\S)/g, \"$1\\n……: $2\")+'</div>';"
       "if ($(\"html\").hasClass(\"loading\"))"
         "$output.find(\"strong:last-of-type\").before(htmsg);"
       "else "
         "$output.append(htmsg);"
-      "$output.scrollTop($output.get(0).scrollHeight);"
+      "if (autoscroll) $output.scrollTop($output.get(0).scrollHeight);"
     "});"
     "$output.on(\"window-resize\", function(){"
       "var $this = $(this);"
@@ -350,9 +356,10 @@ void OvmsWebServer::HandleShell(PageEntry_t& p, PageContext_t& c)
       "$this.scrollTop($this.get(0).scrollHeight);"
     "}).trigger(\"window-resize\");"
     "$(\"#shellform\").on(\"submit\", function(event){"
-      "if (!$(\"html\").hasClass(\"loading\")) {"
+      "var command = $command.val();"
+      "$output.scrollTop($output.get(0).scrollHeight);"
+      "if (command && !$(\"html\").hasClass(\"loading\")) {"
         "var data = $(this).serialize();"
-        "var command = $(\"#input-command\").val();"
         "var lastlen = 0, xhr, timeouthd, timeout = 20;"
         "if (/^(test |ota |co .* scan)/.test(command)) timeout = 60;"
         "var checkabort = function(){ if (xhr.readyState != 4) xhr.abort(\"timeout\"); };"
@@ -360,9 +367,8 @@ void OvmsWebServer::HandleShell(PageEntry_t& p, PageContext_t& c)
           "\"timeout\": 0,"
           "\"beforeSend\": function(){"
             "$(\"html\").addClass(\"loading\");"
-            "$output.append(\"<strong>OVMS#</strong>&nbsp;<kbd>\""
+            "add_output(\"<strong>OVMS#</strong>&nbsp;<kbd>\""
               "+ $(\"<div/>\").text(command).html() + \"</kbd><br>\");"
-            "$output.scrollTop($output.get(0).scrollHeight);"
             "timeouthd = window.setTimeout(checkabort, timeout*1000);"
           "},"
           "\"complete\": function(){"
@@ -376,8 +382,7 @@ void OvmsWebServer::HandleShell(PageEntry_t& p, PageContext_t& c)
               "var response = e.currentTarget.response;"
               "var addtext = response.substring(lastlen);"
               "lastlen = response.length;"
-              "$output.append($(\"<div/>\").text(addtext).html());"
-              "$output.scrollTop($output.get(0).scrollHeight);"
+              "add_output($(\"<div/>\").text(addtext).html());"
               "window.clearTimeout(timeouthd);"
               "timeouthd = window.setTimeout(checkabort, timeout*1000);"
             "},"
@@ -390,8 +395,7 @@ void OvmsWebServer::HandleShell(PageEntry_t& p, PageContext_t& c)
               "txt = \"Error \" + response.status + \" \" + response.statusText;"
             "else"
               "txt = \"Request \" + (xhrerror||\"failed\") + \", please retry\";"
-            "$output.append('<div class=\"bg-danger\">'+txt+'</div>');"
-            "$output.scrollTop($output.get(0).scrollHeight);"
+            "add_output('<div class=\"bg-danger\">'+txt+'</div>');"
           "},"
         "});"
         "if (shellhist.indexOf(command) >= 0)"
@@ -401,15 +405,20 @@ void OvmsWebServer::HandleShell(PageEntry_t& p, PageContext_t& c)
       "event.stopPropagation();"
       "return false;"
     "});"
-    "$(\"#input-command\").on(\"keydown\", function(ev){"
+    "$command.on(\"keydown\", function(ev){"
       "if (ev.key == \"ArrowUp\") {"
         "shellhpos = (shellhist.length + shellhpos - 1) % shellhist.length;"
-        "$(this).val(shellhist[shellhpos]);"
+        "$command.val(shellhist[shellhpos]);"
         "return false;"
       "}"
       "else if (ev.key == \"ArrowDown\") {"
         "shellhpos = (shellhist.length + shellhpos + 1) % shellhist.length;"
-        "$(this).val(shellhist[shellhpos]);"
+        "$command.val(shellhist[shellhpos]);"
+        "return false;"
+      "}"
+      "else if (ev.key == \"Escape\") {"
+        "shellhpos = 0;"
+        "$command.val('');"
         "return false;"
       "}"
       "else if (ev.key == \"PageUp\") {"
@@ -420,8 +429,19 @@ void OvmsWebServer::HandleShell(PageEntry_t& p, PageContext_t& c)
         "$output.scrollTop($output.scrollTop() + $output.height());"
         "return false;"
       "}"
+      "else if (ev.key == \"Home\") {"
+        "if ($command.get(0).selectionEnd == 0) {"
+          "$output.scrollTop(0);"
+        "}"
+      "}"
+      "else if (ev.key == \"End\") {"
+        "if ($command.get(0).selectionEnd == $command.get(0).value.length) {"
+          "$output.scrollTop($output.get(0).scrollHeight);"
+        "}"
+      "}"
     "});"
-    "$(\"#input-command\").focus();"
+    "$('#logmonitor').on('change', function(ev){ $command.focus(); });"
+    "$command.val(shellhist[shellhpos]||'').focus();"
     "})()</script>");
 
   c.panel_end();
@@ -852,12 +872,12 @@ void OvmsWebServer::HandleCfgNotification(PageEntry_t& p, PageContext_t& c)
       {
       if (pmap["user_key"].length() == 0)
         error += "<li data-input=\"user_key\">User key must not be empty</li>";
-      if (pmap["user_key"].find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789") != std::string::npos)
-        error += "<li data-input=\"user_key\">User key may only contain lower case ASCII letters and digits</li>";
+      if (pmap["user_key"].find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789") != std::string::npos)
+        error += "<li data-input=\"user_key\">User key may only contain ASCII letters and digits</li>";
       if (pmap["token"].length() == 0)
         error += "<li data-input=\"token\">Token must not be empty</li>";
-      if (pmap["token"].find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789") != std::string::npos)
-        error += "<li data-input=\"user_key\">Token may only contain lower case ASCII letters and digits</li>";
+      if (pmap["token"].find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789") != std::string::npos)
+        error += "<li data-input=\"user_key\">Token may only contain ASCII letters and digits</li>";
       }
 
     pmap["sound.normal"] = c.getvar("sound.normal");
