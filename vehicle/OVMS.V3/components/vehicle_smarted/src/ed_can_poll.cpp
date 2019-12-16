@@ -661,7 +661,7 @@ void OvmsVehicleSmartED::BmsDiag(int verbosity, OvmsWriter* writer) {
   writer->puts("---- ED Battery Management Diagnostics ----");
   writer->puts("-------------------------------------------");
   
-  writer->printf("SOC : %2.1f %, realSOC: %2.1f %\n", StdMetrics.ms_v_bat_soc->AsFloat(), StdMetrics.ms_v_bat_soh->AsFloat());
+  writer->printf("SOC : %2.1f %, realSOC: %2.1f %\n", StdMetrics.ms_v_bat_soc->AsFloat(), mt_real_soc->AsFloat());
   writer->printf("HV  : %3.1f V, %.2f A, %0.2f kW\n", StdMetrics.ms_v_bat_voltage->AsFloat(), StdMetrics.ms_v_bat_current->AsFloat(), StdMetrics.ms_v_bat_power->AsFloat());
   writer->printf("LV  : %2.1f V\n", StdMetrics.ms_v_bat_12v_voltage->AsFloat());
   
@@ -809,7 +809,7 @@ void OvmsVehicleSmartED::printRPTdata(int verbosity, OvmsWriter* writer) {
   writer->puts("---       Battery Status Report       ---");
   writer->puts("-----------------------------------------");
   //printBatteryProductionData(true);
-  writer->printf("realSOC          : %2.1f %\n", StdMetrics.ms_v_bat_soh->AsFloat());
+  writer->printf("realSOC          : %2.1f %\n", mt_real_soc->AsFloat());
   writer->printf("SOC              : %2.1f %\n", StdMetrics.ms_v_bat_soc->AsFloat());
   writer->printf("Charged capacity : %2.1f Ah\n", mt_v_bat_pack_cmin->AsFloat()/360.0);// writer->printf(" Ah, min. Cell# "); Serial.println(BMS.CAP_min_at + 1);
   writer->printf("BMS estimate     : %2.1f Ah, value @25degC\n", mt_v_bat_Cap_As_min->AsFloat()/360.0);
