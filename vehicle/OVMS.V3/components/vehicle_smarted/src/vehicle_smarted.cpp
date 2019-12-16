@@ -82,14 +82,6 @@ OvmsVehicleSmartED::OvmsVehicleSmartED() {
   mt_bat_energy_used_reset = MyMetrics.InitFloat("xse.v.b.energy.used.reset", SM_STALE_MID, 0, kWh);
   mt_pos_odometer_start    = MyMetrics.InitFloat("xse.v.pos.odometer.start", SM_STALE_MID, 0, Kilometers);
   mt_real_soc              = MyMetrics.InitFloat("xse.v.b.real.soc", SM_STALE_MID, 0, Percentage);
-
-  m_doorlock_port     = 9;
-  m_doorunlock_port   = 8;
-  m_ignition_port     = 7;
-  m_doorstatus_port   = 6;
-  m_range_ideal       = 135;
-  m_egpio_timout      = 5;
-  m_soc_rsoc          = false;
   
   m_candata_timer     = 0;
   m_candata_poll      = 0;
@@ -103,10 +95,8 @@ OvmsVehicleSmartED::OvmsVehicleSmartED() {
   cmd_xse->RegisterCommand("bmsdiag", "Show BMS diagnostic", xse_bmsdiag);
   cmd_xse->RegisterCommand("rptdata", "Show BMS RPTdata", xse_RPTdata);
   
-  RestoreStatus();
-  
   RegisterCanBus(1, CAN_MODE_ACTIVE, CAN_SPEED_500KBPS);
-  RegisterCanBus(2, CAN_MODE_ACTIVE, CAN_SPEED_500KBPS);
+  //RegisterCanBus(2, CAN_MODE_ACTIVE, CAN_SPEED_500KBPS);
   
   // init OBD2 poller:
   ObdInitPoll();
@@ -715,6 +705,7 @@ void OvmsVehicleSmartED::Ticker1(uint32_t ticker) {
 
 void OvmsVehicleSmartED::Ticker10(uint32_t ticker) {
   HandleCharging();
+  if (StandardMetrics.ms_v_bat_soc->AsFloat(0) == 0) RestoreStatus();
 #ifdef CONFIG_OVMS_COMP_MAX7317
   if(m_lock_state) {
     int level = MyPeripherals->m_max7317->Input((uint8_t)m_doorstatus_port);
