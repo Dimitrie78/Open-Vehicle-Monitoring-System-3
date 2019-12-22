@@ -744,8 +744,8 @@ void OvmsVehicleSmartED::BmsDiag(int verbosity, OvmsWriter* writer) {
   writer->printf("CV max  : %4.0f mV, # \n", StdMetrics.ms_v_bat_pack_vmax->AsFloat()*1000 - mt_myBMS_ADCvoltsOffset->AsInt());// Serial.print(F(" mV, # ")); Serial.println(BMS.CV_max_at + 1);
   writer->puts("-------------------------------------------");
   writer->printf("CAP mean: %5.0f As/10, %2.1f Ah\n", mt_v_bat_pack_cavg->AsFloat(), mt_v_bat_pack_cavg->AsFloat() / 360.0);
-  writer->printf("CAP min : %5.0f As/10, %2.1f Ah, # \n", mt_v_bat_pack_cmin->AsFloat(), mt_v_bat_pack_cmin->AsFloat() / 360.0, mt_v_bat_pack_cmin_cell->AsInt());
-  writer->printf("CAP max : %5.0f As/10, %2.1f Ah, # \n", mt_v_bat_pack_cmax->AsFloat(), mt_v_bat_pack_cmax->AsFloat() / 360.0, mt_v_bat_pack_cmax_cell->AsInt());
+  writer->printf("CAP min : %5.0f As/10, %2.1f Ah, #%d \n", mt_v_bat_pack_cmin->AsFloat(), mt_v_bat_pack_cmin->AsFloat() / 360.0, mt_v_bat_pack_cmin_cell->AsInt());
+  writer->printf("CAP max : %5.0f As/10, %2.1f Ah, #%d \n", mt_v_bat_pack_cmax->AsFloat(), mt_v_bat_pack_cmax->AsFloat() / 360.0, mt_v_bat_pack_cmax_cell->AsInt());
   writer->puts("-------------------------------------------");
 /*
   int vwarn=0, valert=0;
