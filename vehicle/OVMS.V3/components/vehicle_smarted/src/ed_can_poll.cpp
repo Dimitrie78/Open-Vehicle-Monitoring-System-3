@@ -138,6 +138,8 @@ void OvmsVehicleSmartED::ObdInitPoll() {
   mt_v_bat_pack_cstddev_max = new OvmsMetricFloat("xse.v.b.p.capacity.stddev.max", SM_STALE_HIGH, Other);
   mt_v_bat_pack_cmin_cell = new OvmsMetricInt("xse.v.b.p.capacity.min.cell", SM_STALE_HIGH, Other);
   mt_v_bat_pack_cmax_cell = new OvmsMetricInt("xse.v.b.p.capacity.max.cell", SM_STALE_HIGH, Other);
+  mt_v_bat_pack_cmin_cell_volt = new OvmsMetricInt("xse.v.b.p.voltage.min.cell", SM_STALE_HIGH, Other);
+  mt_v_bat_pack_cmax_cell_volt = new OvmsMetricInt("xse.v.b.p.voltage.max.cell", SM_STALE_HIGH, Other);
 
   mt_v_bat_cell_capacity = new OvmsMetricVector<float>("xse.v.b.c.capacity", SM_STALE_HIGH, Other);
   mt_v_bat_cell_cmin = new OvmsMetricVector<float>("xse.v.b.c.capacity.min", SM_STALE_HIGH, Other);
@@ -409,6 +411,20 @@ void OvmsVehicleSmartED::PollReply_BMS_BattVolts(const char* reply_data, uint16_
     float Cells = (reply_data[n + 1] * 256 + reply_data[n + 2]);
     BmsSetCellVoltage(n/2, Cells/1000);
   }
+  float min=0, max=0;
+  int cmin=0, cmax=0;
+  for(int i = 0; i < StdMetrics.ms_v_bat_cell_voltage->GetSize(); i++) {
+    if (min==0 || StdMetrics.ms_v_bat_cell_voltage->GetElemValue(i)<min) {
+      min = StdMetrics.ms_v_bat_cell_voltage->GetElemValue(i);
+      cmin = i+1;
+    }
+    if (max==0 || StdMetrics.ms_v_bat_cell_voltage->GetElemValue(i)>max) {
+      max = StdMetrics.ms_v_bat_cell_voltage->GetElemValue(i);
+      cmax = i+1;
+    }
+  }
+  mt_v_bat_pack_cmin_cell_volt->SetValue(cmin);
+  mt_v_bat_pack_cmax_cell_volt->SetValue(cmax);
 }
 
 void OvmsVehicleSmartED::PollReply_BMS_BattCapacity(const char* reply_data, uint16_t reply_len) {
@@ -740,12 +756,12 @@ void OvmsVehicleSmartED::BmsDiag(int verbosity, OvmsWriter* writer) {
   writer->printf("CV mean : %4.0f mV", StdMetrics.ms_v_bat_pack_vavg->AsFloat()*1000 - mt_myBMS_ADCvoltsOffset->AsInt());
   writer->printf(", dV= %.0f mV", StdMetrics.ms_v_bat_pack_vmax->AsFloat()*1000 - StdMetrics.ms_v_bat_pack_vmin->AsFloat()*1000);
   writer->printf(", s= %.2f mV\n", StdMetrics.ms_v_bat_pack_vstddev->AsFloat()*1000);
-  writer->printf("CV min  : %4.0f mV, # \n", StdMetrics.ms_v_bat_pack_vmin->AsFloat()*1000 - mt_myBMS_ADCvoltsOffset->AsInt());// Serial.print(F(" mV, # ")); Serial.println(BMS.CV_min_at + 1);
-  writer->printf("CV max  : %4.0f mV, # \n", StdMetrics.ms_v_bat_pack_vmax->AsFloat()*1000 - mt_myBMS_ADCvoltsOffset->AsInt());// Serial.print(F(" mV, # ")); Serial.println(BMS.CV_max_at + 1);
+  writer->printf("CV min  : %4.0f mV, # %d\n", StdMetrics.ms_v_bat_pack_vmin->AsFloat()*1000 - mt_myBMS_ADCvoltsOffset->AsInt(), mt_v_bat_pack_cmin_cell_volt->AsInt());
+  writer->printf("CV max  : %4.0f mV, # %d\n", StdMetrics.ms_v_bat_pack_vmax->AsFloat()*1000 - mt_myBMS_ADCvoltsOffset->AsInt(), mt_v_bat_pack_cmax_cell_volt->AsInt());
   writer->puts("-------------------------------------------");
   writer->printf("CAP mean: %5.0f As/10, %2.1f Ah\n", mt_v_bat_pack_cavg->AsFloat(), mt_v_bat_pack_cavg->AsFloat() / 360.0);
-  writer->printf("CAP min : %5.0f As/10, %2.1f Ah, #%d \n", mt_v_bat_pack_cmin->AsFloat(), mt_v_bat_pack_cmin->AsFloat() / 360.0, mt_v_bat_pack_cmin_cell->AsInt());
-  writer->printf("CAP max : %5.0f As/10, %2.1f Ah, #%d \n", mt_v_bat_pack_cmax->AsFloat(), mt_v_bat_pack_cmax->AsFloat() / 360.0, mt_v_bat_pack_cmax_cell->AsInt());
+  writer->printf("CAP min : %5.0f As/10, %2.1f Ah, # %d \n", mt_v_bat_pack_cmin->AsFloat(), mt_v_bat_pack_cmin->AsFloat() / 360.0, mt_v_bat_pack_cmin_cell->AsInt());
+  writer->printf("CAP max : %5.0f As/10, %2.1f Ah, # %d \n", mt_v_bat_pack_cmax->AsFloat(), mt_v_bat_pack_cmax->AsFloat() / 360.0, mt_v_bat_pack_cmax_cell->AsInt());
   writer->puts("-------------------------------------------");
 /*
   int vwarn=0, valert=0;
@@ -820,7 +836,7 @@ void OvmsVehicleSmartED::printRPTdata(int verbosity, OvmsWriter* writer) {
   //printBatteryProductionData(true);
   writer->printf("realSOC          : %s\n", (char*) mt_real_soc->AsUnitString("-", Native, 1).c_str());
   writer->printf("SOC              : %s\n", (char*) StdMetrics.ms_v_bat_soc->AsUnitString("-", Native, 1).c_str());
-  writer->printf("Charged capacity : %2.1f Ah\n", mt_v_bat_pack_cmin->AsFloat()/360.0);// writer->printf(" Ah, min. Cell# "); Serial.println(BMS.CAP_min_at + 1);
+  writer->printf("Charged capacity : %2.1f Ah, min. Cell# %d\n", mt_v_bat_pack_cmin->AsFloat()/360.0, mt_v_bat_pack_cmin_cell->AsInt());
   writer->printf("BMS estimate     : %2.1f Ah, value @25degC\n", mt_v_bat_Cap_As_min->AsFloat()/360.0);
   writer->printf("Measurement done : %d day(s) ago\n", mt_v_bat_LastMeas_days->AsInt());
   if (mt_v_bat_LastMeas_days->AsInt() > 21) writer->puts("* Watch timer for OCV state, redo test! *");
