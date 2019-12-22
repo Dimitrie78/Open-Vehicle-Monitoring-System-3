@@ -136,8 +136,8 @@ void OvmsVehicleSmartED::ObdInitPoll() {
   mt_v_bat_pack_cavg = new OvmsMetricFloat("xse.v.b.p.capacity.avg", SM_STALE_HIGH, Other);
   mt_v_bat_pack_cstddev = new OvmsMetricFloat("xse.v.b.p.capacity.stddev", SM_STALE_HIGH, Other);
   mt_v_bat_pack_cstddev_max = new OvmsMetricFloat("xse.v.b.p.capacity.stddev.max", SM_STALE_HIGH, Other);
-  mt_v_bat_pack_cmin_cell = new OvmsMetricFloat("xse.v.b.p.capacity.min.cell", SM_STALE_HIGH, Other);
-  mt_v_bat_pack_cmax_cell = new OvmsMetricFloat("xse.v.b.p.capacity.max.cell", SM_STALE_HIGH, Other);
+  mt_v_bat_pack_cmin_cell = new OvmsMetricInt("xse.v.b.p.capacity.min.cell", SM_STALE_HIGH, Other);
+  mt_v_bat_pack_cmax_cell = new OvmsMetricInt("xse.v.b.p.capacity.max.cell", SM_STALE_HIGH, Other);
 
   mt_v_bat_cell_capacity = new OvmsMetricVector<float>("xse.v.b.c.capacity", SM_STALE_HIGH, Other);
   mt_v_bat_cell_cmin = new OvmsMetricVector<float>("xse.v.b.c.capacity.min", SM_STALE_HIGH, Other);
@@ -585,7 +585,7 @@ void OvmsVehicleSmartED::BmsSetCellCapacity(int index, float value) {
     // get min, max, avg & standard deviation:
     double sum=0, sqrsum=0, avg, stddev=0;
     float min=0, max=0;
-    int cmin, cmax;
+    int cmin=0, cmax=0;
     for (int i=0; i<m_bms_readings_c; i++) {
       sum += m_bms_capacitys[i];
       sqrsum += SQR(m_bms_capacitys[i]);
