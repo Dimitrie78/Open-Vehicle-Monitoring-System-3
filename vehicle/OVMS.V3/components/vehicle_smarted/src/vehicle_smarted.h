@@ -68,6 +68,7 @@ class OvmsVehicleSmartED : public OvmsVehicle
     static void WebCfgBattery(PageEntry_t& p, PageContext_t& c);
     static void WebCfgCommands(PageEntry_t& p, PageContext_t& c);
     static void WebCfgNotify(PageEntry_t& p, PageContext_t& c);
+    static void BmsCellMonitor(PageEntry_t& p, PageContext_t& c);
     void ConfigChanged(OvmsConfigParam* param);
     bool SetFeature(int key, const char* value);
     const std::string GetFeature(int key);
@@ -238,6 +239,8 @@ class OvmsVehicleSmartED : public OvmsVehicle
     OvmsMetricFloat*  mt_v_bat_pack_cavg;                 // Cell capacity - pack average [As]
     OvmsMetricFloat*  mt_v_bat_pack_cstddev;              // Cell capacity - current standard deviation [As]
     OvmsMetricFloat*  mt_v_bat_pack_cstddev_max;          // Cell capacity - maximum standard deviation observed [As]
+    OvmsMetricFloat*  mt_v_bat_pack_cmin_cell;            // Cell capacity - number of weakest cell in pack
+    OvmsMetricFloat*  mt_v_bat_pack_cmax_cell;            // Cell capacity - number of strongest cell in pack
     
     OvmsMetricVector<float>* mt_v_bat_cell_capacity;      // Cell capacity [As]
     OvmsMetricVector<float>* mt_v_bat_cell_cmin;          // Cell minimum capacity [As]

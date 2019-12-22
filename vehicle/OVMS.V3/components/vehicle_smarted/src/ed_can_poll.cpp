@@ -136,6 +136,8 @@ void OvmsVehicleSmartED::ObdInitPoll() {
   mt_v_bat_pack_cavg = new OvmsMetricFloat("xse.v.b.p.capacity.avg", SM_STALE_HIGH, Other);
   mt_v_bat_pack_cstddev = new OvmsMetricFloat("xse.v.b.p.capacity.stddev", SM_STALE_HIGH, Other);
   mt_v_bat_pack_cstddev_max = new OvmsMetricFloat("xse.v.b.p.capacity.stddev.max", SM_STALE_HIGH, Other);
+  mt_v_bat_pack_cmin_cell = new OvmsMetricFloat("xse.v.b.p.capacity.min.cell", SM_STALE_HIGH, Other);
+  mt_v_bat_pack_cmax_cell = new OvmsMetricFloat("xse.v.b.p.capacity.max.cell", SM_STALE_HIGH, Other);
 
   mt_v_bat_cell_capacity = new OvmsMetricVector<float>("xse.v.b.c.capacity", SM_STALE_HIGH, Other);
   mt_v_bat_cell_cmin = new OvmsMetricVector<float>("xse.v.b.c.capacity.min", SM_STALE_HIGH, Other);
@@ -583,13 +585,18 @@ void OvmsVehicleSmartED::BmsSetCellCapacity(int index, float value) {
     // get min, max, avg & standard deviation:
     double sum=0, sqrsum=0, avg, stddev=0;
     float min=0, max=0;
+    int cmin, cmax;
     for (int i=0; i<m_bms_readings_c; i++) {
       sum += m_bms_capacitys[i];
       sqrsum += SQR(m_bms_capacitys[i]);
-      if (min==0 || m_bms_capacitys[i]<min)
+      if (min==0 || m_bms_capacitys[i]<min) {
         min = m_bms_capacitys[i];
-      if (max==0 || m_bms_capacitys[i]>max)
+        cmin = i+1;
+      }
+      if (max==0 || m_bms_capacitys[i]>max) {
         max = m_bms_capacitys[i];
+        cmax = i+1;
+      }
     }
     avg = sum / m_bms_readings_c;
     stddev = sqrt(LIMIT_MIN((sqrsum / m_bms_readings_c) - SQR(avg), 0));
@@ -607,6 +614,8 @@ void OvmsVehicleSmartED::BmsSetCellCapacity(int index, float value) {
     mt_v_bat_pack_cmax->SetValue(max);
     mt_v_bat_pack_cavg->SetValue(avg);
     mt_v_bat_pack_cstddev->SetValue(stddev);
+    mt_v_bat_pack_cmin_cell->SetValue(cmin);
+    mt_v_bat_pack_cmax_cell->SetValue(cmax);
     if (stddev > mt_v_bat_pack_cstddev_max->AsFloat())
       mt_v_bat_pack_cstddev_max->SetValue(stddev);
     mt_v_bat_cell_capacity->SetElemValues(0, m_bms_readings_c, m_bms_capacitys);
@@ -661,7 +670,7 @@ void OvmsVehicleSmartED::BmsDiag(int verbosity, OvmsWriter* writer) {
   writer->puts("---- ED Battery Management Diagnostics ----");
   writer->puts("-------------------------------------------");
   
-  writer->printf("SOC : %2.1f %, realSOC: %2.1f %\n", StdMetrics.ms_v_bat_soc->AsFloat(), mt_real_soc->AsFloat());
+  writer->printf("SOC : %s, realSOC: %s\n", (char*) StdMetrics.ms_v_bat_soc->AsUnitString("-", Native, 1).c_str(), (char*) mt_real_soc->AsUnitString("-", Native, 1).c_str());
   writer->printf("HV  : %3.1f V, %.2f A, %0.2f kW\n", StdMetrics.ms_v_bat_voltage->AsFloat(), StdMetrics.ms_v_bat_current->AsFloat(), StdMetrics.ms_v_bat_power->AsFloat());
   writer->printf("LV  : %2.1f V\n", StdMetrics.ms_v_bat_12v_voltage->AsFloat());
   
@@ -735,8 +744,8 @@ void OvmsVehicleSmartED::BmsDiag(int verbosity, OvmsWriter* writer) {
   writer->printf("CV max  : %4.0f mV, # \n", StdMetrics.ms_v_bat_pack_vmax->AsFloat()*1000 - mt_myBMS_ADCvoltsOffset->AsInt());// Serial.print(F(" mV, # ")); Serial.println(BMS.CV_max_at + 1);
   writer->puts("-------------------------------------------");
   writer->printf("CAP mean: %5.0f As/10, %2.1f Ah\n", mt_v_bat_pack_cavg->AsFloat(), mt_v_bat_pack_cavg->AsFloat() / 360.0);
-  writer->printf("CAP min : %5.0f As/10, %2.1f Ah, # \n", mt_v_bat_pack_cmin->AsFloat(), mt_v_bat_pack_cmin->AsFloat() / 360.0);// Serial.println(BMS.CAP_min_at + 1);
-  writer->printf("CAP max : %5.0f As/10, %2.1f Ah, # \n", mt_v_bat_pack_cmax->AsFloat(), mt_v_bat_pack_cmax->AsFloat() / 360.0);// Serial.println(BMS.CAP_max_at + 1);
+  writer->printf("CAP min : %5.0f As/10, %2.1f Ah, # \n", mt_v_bat_pack_cmin->AsFloat(), mt_v_bat_pack_cmin->AsFloat() / 360.0, mt_v_bat_pack_cmin_cell->AsInt());
+  writer->printf("CAP max : %5.0f As/10, %2.1f Ah, # \n", mt_v_bat_pack_cmax->AsFloat(), mt_v_bat_pack_cmax->AsFloat() / 360.0, mt_v_bat_pack_cmax_cell->AsInt());/
   writer->puts("-------------------------------------------");
 /*
   int vwarn=0, valert=0;
@@ -809,8 +818,8 @@ void OvmsVehicleSmartED::printRPTdata(int verbosity, OvmsWriter* writer) {
   writer->puts("---       Battery Status Report       ---");
   writer->puts("-----------------------------------------");
   //printBatteryProductionData(true);
-  writer->printf("realSOC          : %2.1f %\n", mt_real_soc->AsFloat());
-  writer->printf("SOC              : %2.1f %\n", StdMetrics.ms_v_bat_soc->AsFloat());
+  writer->printf("realSOC          : %s\n", (char*) mt_real_soc->AsUnitString("-", Native, 1).c_str());
+  writer->printf("SOC              : %s\n", (char*) StdMetrics.ms_v_bat_soc->AsUnitString("-", Native, 1).c_str());
   writer->printf("Charged capacity : %2.1f Ah\n", mt_v_bat_pack_cmin->AsFloat()/360.0);// writer->printf(" Ah, min. Cell# "); Serial.println(BMS.CAP_min_at + 1);
   writer->printf("BMS estimate     : %2.1f Ah, value @25degC\n", mt_v_bat_Cap_As_min->AsFloat()/360.0);
   writer->printf("Measurement done : %d day(s) ago\n", mt_v_bat_LastMeas_days->AsInt());
