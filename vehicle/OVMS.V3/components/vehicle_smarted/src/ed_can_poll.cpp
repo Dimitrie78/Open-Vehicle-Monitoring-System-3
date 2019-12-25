@@ -192,7 +192,7 @@ void OvmsVehicleSmartED::ObdInitPoll() {
   BmsSetCellLimitsVoltage(2.0, 5.0);
   BmsSetCellLimitsTemperature(-39, 200);
   BmsSetCellDefaultThresholdsVoltage(0.030, 0.050);
-  BmsSetCellDefaultThresholdsTemperature(2.0, 3.0);
+  BmsSetCellDefaultThresholdsTemperature(4.0, 5.0);
   
   // init poller:
   PollSetPidList(m_can1, smarted_polls);
