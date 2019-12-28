@@ -125,6 +125,8 @@ class OvmsVehicleSmartED : public OvmsVehicle
     void PollReply_BMS_ModuleTemp(const char* reply_data, uint16_t reply_len);
     void PollReply_BMS_BattDate(const char* reply_data, uint16_t reply_len);
     void PollReply_BMS_BattProdDate(const char* reply_data, uint16_t reply_len);
+    void PollReply_BMS_BattHWrev(const char* reply_data, uint16_t reply_len);
+    void PollReply_BMS_BattSWrev(const char* reply_data, uint16_t reply_len);
     void PollReply_BMS_BattIsolation(const char* reply_data, uint16_t reply_len);
     void PollReply_BMS_BattVIN(const char* reply_data, uint16_t reply_len);
     void PollReply_NLG6_ChargerPN_HW(const char* reply_data, uint16_t reply_len);
@@ -210,6 +212,9 @@ class OvmsVehicleSmartED : public OvmsVehicle
     OvmsMetricInt* mt_myBMS_DCfault;              //!< Flag to show DC-isolation fault
     
     OvmsMetricString* mt_myBMS_BattVIN;           //!< VIN stored in BMS
+    
+    OvmsMetricVector<int> *mt_myBMS_HWrev;         //!< hardware-revision
+    OvmsMetricVector<int> *mt_myBMS_SWrev;         //!< soft-revision
 
     #define DEFAULT_BATTERY_CAPACITY 17600
     #define DEFAULT_BATTERY_AMPHOURS 52

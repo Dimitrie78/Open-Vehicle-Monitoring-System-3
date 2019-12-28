@@ -103,6 +103,9 @@ static const OvmsVehicle::poll_pid_t smarted_polls[] =
   { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0304, {  0,300,600,0 } }, // rqBattDate
   { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0xF18C, {  0,300,600,0 } }, // rqBattProdDate
   //getBatteryRevision
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0xF150, {  0,300,600,60 } }, //rqBattHWrev
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0xF151, {  0,300,600,60 } }, //rqBattSWrev
+  
   { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0201, {  0,300,600,120 } }, // rqBattTemperatures
   { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0202, {  0,300,600,120 } }, // rqBattModuleTemperatures
   { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x030B, {  0,300,600,0 } }, // rqBattHVContactorCyclesLeft
@@ -184,6 +187,8 @@ void OvmsVehicleSmartED::ObdInitPoll() {
   mt_myBMS_Isolation           = new OvmsMetricInt("xse.mybms.isolation", SM_STALE_HIGH, Other);
   mt_myBMS_DCfault             = new OvmsMetricInt("xse.mybms.dc.fault", SM_STALE_HIGH, Other);
   mt_myBMS_BattVIN             = new OvmsMetricString("xse.mybms.batt.vin");
+  mt_myBMS_HWrev               = new OvmsMetricVector<int>("xse.mybms.HW.rev", SM_STALE_HIGH, Other);
+  mt_myBMS_SWrev               = new OvmsMetricVector<int>("xse.mybms.SW.rev", SM_STALE_HIGH, Other);
   
   // BMS configuration:
   BmsSetCellArrangementCapacity(93, 1);
@@ -288,6 +293,12 @@ void OvmsVehicleSmartED::IncomingPollReply(canbus* bus, uint16_t type, uint16_t 
     case 0xF18C: // rqBattProdDate
       PollReply_BMS_BattProdDate(rxbuf.data(), rxbuf.size());
       break;
+    case 0xF150: //rqBattHWrev
+      PollReply_BMS_BattHWrev(rxbuf.data(), rxbuf.size());
+      break;
+    case 0xF151: //rqBattSWrev
+      PollReply_BMS_BattSWrev(rxbuf.data(), rxbuf.size());
+      break;
     case 0xF190: // rqBattVIN
       PollReply_BMS_BattVIN(rxbuf.data(), rxbuf.size());
       break;
@@ -370,6 +381,18 @@ void OvmsVehicleSmartED::PollReply_BMS_BattProdDate(const char* reply_data, uint
   myBMS_ProdYear = (reply_data[1] - 48) * 10 + (reply_data[2] - 48);
   myBMS_ProdMonth = (reply_data[3] - 48) * 10 + (reply_data[4] - 48);
   myBMS_ProdDay = (reply_data[5] - 48) * 10 + (reply_data[6] - 48);
+}
+
+void OvmsVehicleSmartED::PollReply_BMS_BattHWrev(const char* reply_data, uint16_t reply_len) {
+  for(int n = 0; n < 3; n++) {
+    mt_myBMS_HWrev->SetElemValue(n, reply_data[n]);
+  }
+}
+
+void OvmsVehicleSmartED::PollReply_BMS_BattSWrev(const char* reply_data, uint16_t reply_len) {
+  for(int n = 4; n < 7; n++) {
+    mt_myBMS_SWrev->SetElemValue(n-4, reply_data[n]);
+  }
 }
 
 void OvmsVehicleSmartED::PollReply_BMS_BattIsolation(const char* reply_data, uint16_t reply_len) {
@@ -675,7 +698,7 @@ void OvmsVehicleSmartED::BmsResetCellCapacitys() {
 }
 
 void OvmsVehicleSmartED::BmsDiag(int verbosity, OvmsWriter* writer) {
-  //int c;
+  metric_unit_t rangeUnit = (MyConfig.GetParamValue("vehicle", "units.distance") == "M") ? Miles : Kilometers;
 
   if (!m_bms_has_capacitys) {
     writer->puts("No BMS status data available");
@@ -684,6 +707,37 @@ void OvmsVehicleSmartED::BmsDiag(int verbosity, OvmsWriter* writer) {
   
   writer->puts("-------------------------------------------");
   writer->puts("---- ED Battery Management Diagnostics ----");
+  writer->puts("-------------------------------------------");
+  
+  writer->printf("Battery VIN: %s\n", (char*) mt_myBMS_BattVIN->AsString().c_str());
+  writer->printf("Time [hh:mm]: %02d:%02d", mt_vehicle_time->AsInt(0, Hours), mt_vehicle_time->AsInt(0, Minutes)-(mt_vehicle_time->AsInt(0, Hours)*60));
+  writer->printf(",   ODO : %s\n", (char*) StdMetrics.ms_v_pos_odometer->AsUnitString("-", rangeUnit, 0).c_str());
+  
+  writer->puts("-------------------------------------------");
+  
+  writer->printf("Battery Status   : ");
+  if (myBMS_SOH == 0xFF) {
+    writer->puts("OK");
+  } else if (myBMS_SOH == 0) {
+    writer->puts("FAULT");
+  } else {
+    writer->printf("DEGRADED: ");
+    for(uint8_t mask = 0x80; mask; mask >>= 1) {
+      if(mask & myBMS_SOH) {
+        writer->printf("1");
+      } else {
+        writer->printf("0");
+      }
+    }
+    writer->puts("");
+  }
+  writer->puts("");
+  writer->printf("Battery Production [Y/M/D]: %d/%d/%d\n", 2000 + myBMS_ProdYear, myBMS_ProdMonth, myBMS_ProdDay);  
+  writer->printf("Battery-FAT date   [Y/M/D]: %d/%d/%d\n", 2000 + myBMS_Year, myBMS_Month, myBMS_Day);
+  writer->printf("Rev.[Y/WK/PL] HW:%d/%d/%d, SW:%d/%d/%d\n",
+    2000 + mt_myBMS_HWrev->GetElemValue(0), mt_myBMS_HWrev->GetElemValue(1), mt_myBMS_HWrev->GetElemValue(2),
+    2000 + mt_myBMS_SWrev->GetElemValue(0), mt_myBMS_SWrev->GetElemValue(1), mt_myBMS_SWrev->GetElemValue(2));
+  
   writer->puts("-------------------------------------------");
   
   writer->printf("SOC : %s, realSOC: %s\n", (char*) StdMetrics.ms_v_bat_soc->AsUnitString("-", Native, 1).c_str(), (char*) mt_real_soc->AsUnitString("-", Native, 1).c_str());
@@ -763,77 +817,51 @@ void OvmsVehicleSmartED::BmsDiag(int verbosity, OvmsWriter* writer) {
   writer->printf("CAP min : %5.0f As/10, %2.1f Ah, # %d \n", mt_v_bat_pack_cmin->AsFloat(), mt_v_bat_pack_cmin->AsFloat() / 360.0, mt_v_bat_pack_cmin_cell->AsInt());
   writer->printf("CAP max : %5.0f As/10, %2.1f Ah, # %d \n", mt_v_bat_pack_cmax->AsFloat(), mt_v_bat_pack_cmax->AsFloat() / 360.0, mt_v_bat_pack_cmax_cell->AsInt());
   writer->puts("-------------------------------------------");
-/*
-  int vwarn=0, valert=0;
-  int twarn=0, talert=0;
-  for (c=0; c<m_bms_readings_v; c++) {
-    if (m_bms_valerts[c]==1) vwarn++;
-    if (m_bms_valerts[c]==2) valert++;
-  }
-  for (c=0; c<m_bms_readings_t; c++) {
-    if (m_bms_talerts[c]==1) twarn++;
-    if (m_bms_talerts[c]==2) talert++;
-  }
-
-  writer->puts("Voltage:");
-  writer->printf("    Average: %5.3fV [%5.3fV - %5.3fV]\n",
-    StdMetrics.ms_v_bat_pack_vavg->AsFloat(),
-    StdMetrics.ms_v_bat_pack_vmin->AsFloat(),
-    StdMetrics.ms_v_bat_pack_vmax->AsFloat());
-  writer->printf("  Deviation: SD %6.2fmV [max %.2fmV], %d warnings, %d alerts\n",
-    StdMetrics.ms_v_bat_pack_vstddev->AsFloat()*1000,
-    StdMetrics.ms_v_bat_pack_vstddev_max->AsFloat()*1000,
-    vwarn, valert);
-
-  writer->puts("Temperature:");
-  writer->printf("    Average: %5.1fC [%5.1fC - %5.1fC]\n",
-    StdMetrics.ms_v_bat_pack_tavg->AsFloat(),
-    StdMetrics.ms_v_bat_pack_tmin->AsFloat(),
-    StdMetrics.ms_v_bat_pack_tmax->AsFloat());
-  writer->printf("  Deviation: SD %6.2fC  [max %.2fC], %d warnings, %d alerts\n",
-    StdMetrics.ms_v_bat_pack_tstddev->AsFloat(),
-    StdMetrics.ms_v_bat_pack_tstddev_max->AsFloat(),
-    twarn, talert);
-  
-  writer->puts("Cells:");
-  int kv = 0;
-  int kt = 0;
-  for (int module = 0; module < (m_bms_readings_v/m_bms_readingspermodule_v); module++)
-    {
-    writer->printf("    +");
-    for (c=0;c<m_bms_readingspermodule_v;c++) { writer->printf("-------"); }
-    writer->printf("-+");
-    for (c=0;c<m_bms_readingspermodule_c;c++) { writer->printf("------------"); }
-    writer->puts("-+");
-    writer->printf("%3d |",module+1);
-    for (c=0; c<m_bms_readingspermodule_v; c++)
-      {
-      writer->printf(" %5.3fV",m_bms_voltages[kv++]);
-      }
-    writer->printf(" |");
-    for (c=0; c<m_bms_readingspermodule_c; c++)
-      {
-      writer->printf(" %5.0f As/10",m_bms_capacitys[kt++]);
-      }
-    writer->puts(" |");
-    }
-
-  writer->printf("    +");
-  for (c=0;c<m_bms_readingspermodule_v;c++) { writer->printf("-------"); }
-  writer->printf("-+");
-  for (c=0;c<m_bms_readingspermodule_c;c++) { writer->printf("-------"); }
-  writer->puts("-+");
-*/
 }
 
 //--------------------------------------------------------------------------------
 //! \brief   Output BMS dataset
 //--------------------------------------------------------------------------------
 void OvmsVehicleSmartED::printRPTdata(int verbosity, OvmsWriter* writer) {
+  metric_unit_t rangeUnit = (MyConfig.GetParamValue("vehicle", "units.distance") == "M") ? Miles : Kilometers;
+  
+  if (!m_bms_has_capacitys) {
+    writer->puts("No BMS status data available");
+    return;
+  }
+  
   writer->puts("-----------------------------------------");
   writer->puts("---       Battery Status Report       ---");
   writer->puts("-----------------------------------------");
-  //printBatteryProductionData(true);
+  
+  writer->printf("Battery VIN: %s\n", (char*) mt_myBMS_BattVIN->AsString().c_str());
+  writer->printf("Time [hh:mm]: %02d:%02d", mt_vehicle_time->AsInt(0, Hours), mt_vehicle_time->AsInt(0, Minutes)-(mt_vehicle_time->AsInt(0, Hours)*60));
+  writer->printf(",   ODO : %s\n", (char*) StdMetrics.ms_v_pos_odometer->AsUnitString("-", rangeUnit, 0).c_str());
+  
+  writer->printf("Battery Status   : ");
+  if (myBMS_SOH == 0xFF) {
+    writer->puts("OK");
+  } else if (myBMS_SOH == 0) {
+    writer->puts("FAULT");
+  } else {
+    writer->printf("DEGRADED: ");
+    for(uint8_t mask = 0x80; mask; mask >>= 1) {
+      if(mask & myBMS_SOH) {
+        writer->printf("1");
+      } else {
+        writer->printf("0");
+      }
+    }
+    writer->puts("");
+  }
+  writer->puts("");
+  writer->printf("Battery Production [Y/M/D]: %d/%d/%d\n", 2000 + myBMS_ProdYear, myBMS_ProdMonth, myBMS_ProdDay);
+  writer->printf("Battery verified   [Y/M/D]: %d/%d/%d\n", 2000 + myBMS_Year, myBMS_Month, myBMS_Day);  
+  writer->printf("Rev.[Y/WK/PL] HW:%d/%d/%d, SW:%d/%d/%d\n",
+    2000 + mt_myBMS_HWrev->GetElemValue(0), mt_myBMS_HWrev->GetElemValue(1), mt_myBMS_HWrev->GetElemValue(2),
+    2000 + mt_myBMS_SWrev->GetElemValue(0), mt_myBMS_SWrev->GetElemValue(1), mt_myBMS_SWrev->GetElemValue(2));
+  
+  writer->puts("");
   writer->printf("realSOC          : %s\n", (char*) mt_real_soc->AsUnitString("-", Native, 1).c_str());
   writer->printf("SOC              : %s\n", (char*) StdMetrics.ms_v_bat_soc->AsUnitString("-", Native, 1).c_str());
   writer->printf("Charged capacity : %2.1f Ah, min. Cell# %d\n", mt_v_bat_pack_cmin->AsFloat()/360.0, mt_v_bat_pack_cmin_cell->AsInt());
