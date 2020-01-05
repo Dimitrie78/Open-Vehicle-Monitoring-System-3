@@ -253,14 +253,37 @@ void OvmsWebServer::HandleStatus(PageEntry_t& p, PageContext_t& c)
  */
 void OvmsWebServer::HandleCommand(PageEntry_t& p, PageContext_t& c)
 {
-  std::string command = c.getvar("command", 2000);
+  std::string type = c.getvar("type");
+  bool javascript = (type == "js");
   std::string output = c.getvar("output");
+  extram::string command;
+  c.getvar("command", command);
+
+#ifndef CONFIG_OVMS_SC_JAVASCRIPT_DUKTAPE
+  if (javascript) {
+    c.head(400);
+    c.print("ERROR: Javascript support disabled");
+    c.done();
+    return;
+  }
+#endif
+
+  if (!javascript && command.length() > 2000) {
+    c.head(400);
+    c.print("ERROR: command too long (max 2000 chars)");
+    c.done();
+    return;
+  }
 
   // Note: application/octet-stream default instead of text/plain is a workaround for an *old*
   //  Chrome/Webkit bug: chunked text/plain is always buffered for the first 1024 bytes.
   if (output == "text") {
     c.head(200,
       "Content-Type: text/plain; charset=utf-8\r\n"
+      "Cache-Control: no-cache");
+  } else if (output == "json") {
+    c.head(200,
+      "Content-Type: application/json; charset=utf-8\r\n"
       "Cache-Control: no-cache");
   } else {
     c.head(200,
@@ -271,7 +294,7 @@ void OvmsWebServer::HandleCommand(PageEntry_t& p, PageContext_t& c)
   if (command.empty())
     c.done();
   else
-    new HttpCommandStream(c.nc, command);
+    new HttpCommandStream(c.nc, command, javascript);
 }
 
 
@@ -334,12 +357,12 @@ void OvmsWebServer::HandleShell(PageEntry_t& p, PageContext_t& c)
     "};"
     "var htmsg = \"\";"
     "for (msg of loghist)"
-      "htmsg += '<div class=\"log log-'+msg[0]+'\">'+msg.replace(/(\\S)\\|+(\\S)/g, \"$1\\n……: $2\")+'</div>';"
+      "htmsg += '<div class=\"log log-'+msg[0]+'\">'+encode_html(msg.replace(/(\\S)\\|+(\\S)/g, \"$1\\n……: $2\"))+'</div>';"
     "$output.html(htmsg);"
     "$output.on(\"msg:log\", function(ev, msg){"
       "if (!$(\"#logmonitor\").prop(\"checked\")) return;"
       "var autoscroll = ($output.get(0).scrollTop + $output.innerHeight()) >= $output.get(0).scrollHeight;"
-      "htmsg = '<div class=\"log log-'+msg[0]+'\">'+msg.replace(/(\\S)\\|+(\\S)/g, \"$1\\n……: $2\")+'</div>';"
+      "htmsg = '<div class=\"log log-'+msg[0]+'\">'+encode_html(msg.replace(/(\\S)\\|+(\\S)/g, \"$1\\n……: $2\"))+'</div>';"
       "if ($(\"html\").hasClass(\"loading\"))"
         "$output.find(\"strong:last-of-type\").before(htmsg);"
       "else "
@@ -1794,7 +1817,10 @@ void OvmsWebServer::UpdateWifiTable(PageEntry_t& p, PageContext_t& c, const std:
 void OvmsWebServer::HandleCfgAutoInit(PageEntry_t& p, PageContext_t& c)
 {
   std::string error, warn;
-  bool init, ext12v, modem, server_v2, server_v3, scripting;
+  bool init, ext12v, modem, server_v2, server_v3;
+  #ifdef CONFIG_OVMS_SC_JAVASCRIPT_DUKTAPE
+    bool scripting;
+  #endif
   bool dbc;
   #ifdef CONFIG_OVMS_COMP_MAX7317
     bool egpio;
@@ -1814,7 +1840,9 @@ void OvmsWebServer::HandleCfgAutoInit(PageEntry_t& p, PageContext_t& c)
     modem = (c.getvar("modem") == "yes");
     server_v2 = (c.getvar("server_v2") == "yes");
     server_v3 = (c.getvar("server_v3") == "yes");
-    scripting = (c.getvar("scripting") == "yes");
+    #ifdef CONFIG_OVMS_SC_JAVASCRIPT_DUKTAPE
+      scripting = (c.getvar("scripting") == "yes");
+    #endif
     vehicle_type = c.getvar("vehicle_type");
     obd2ecu = c.getvar("obd2ecu");
     wifi_mode = c.getvar("wifi_mode");
@@ -1867,7 +1895,9 @@ void OvmsWebServer::HandleCfgAutoInit(PageEntry_t& p, PageContext_t& c)
       MyConfig.SetParamValueBool("auto", "modem", modem);
       MyConfig.SetParamValueBool("auto", "server.v2", server_v2);
       MyConfig.SetParamValueBool("auto", "server.v3", server_v3);
-      MyConfig.SetParamValueBool("auto", "scripting", scripting);
+      #ifdef CONFIG_OVMS_SC_JAVASCRIPT_DUKTAPE
+        MyConfig.SetParamValueBool("auto", "scripting", scripting);
+      #endif
       MyConfig.SetParamValue("auto", "vehicle.type", vehicle_type);
       MyConfig.SetParamValue("auto", "obd2ecu", obd2ecu);
       MyConfig.SetParamValue("auto", "wifi.mode", wifi_mode);
@@ -1905,7 +1935,9 @@ void OvmsWebServer::HandleCfgAutoInit(PageEntry_t& p, PageContext_t& c)
     modem = MyConfig.GetParamValueBool("auto", "modem", false);
     server_v2 = MyConfig.GetParamValueBool("auto", "server.v2", false);
     server_v3 = MyConfig.GetParamValueBool("auto", "server.v3", false);
-    scripting = MyConfig.GetParamValueBool("auto", "scripting", true);
+    #ifdef CONFIG_OVMS_SC_JAVASCRIPT_DUKTAPE
+      scripting = MyConfig.GetParamValueBool("auto", "scripting", true);
+    #endif
     vehicle_type = MyConfig.GetParamValue("auto", "vehicle.type");
     obd2ecu = MyConfig.GetParamValue("auto", "obd2ecu");
     wifi_mode = MyConfig.GetParamValue("auto", "wifi.mode", "ap");
@@ -1925,8 +1957,10 @@ void OvmsWebServer::HandleCfgAutoInit(PageEntry_t& p, PageContext_t& c)
     "<p>Note: if a crash occurs within 10 seconds after powering the module, autostart will be temporarily"
     " disabled. You may need to use the USB shell to access the module and fix the config.</p>");
 
-  c.input_checkbox("Enable scripting", "scripting", scripting,
-    "<p>Enable execution of user scripts as commands and on events.</p>");
+  #ifdef CONFIG_OVMS_SC_JAVASCRIPT_DUKTAPE
+    c.input_checkbox("Enable Javascript engine (Duktape)", "scripting", scripting,
+      "<p>Enable execution of Javascript on the module (plugins, commands, event handlers).</p>");
+  #endif
 
   c.input_checkbox("Autoload DBC files", "dbc", dbc,
     "<p>Enable to autoload DBC files (for reverse engineering).</p>");
@@ -3382,7 +3416,9 @@ void OvmsWebServer::HandleEditor(PageEntry_t& p, PageContext_t& c)
   }
   else
   {
-    if (path != "") {
+    if (path == "") {
+      path = "/store/";
+    } else if (path.back() != '/') {
       // read file:
       std::ifstream file(path, std::ios::in | std::ios::binary | std::ios::ate);
       if (file.is_open()) {
@@ -3408,13 +3444,30 @@ void OvmsWebServer::HandleEditor(PageEntry_t& p, PageContext_t& c)
   }
 
   c.printf(
+    "<style>\n"
+    "#input-content {\n"
+      "resize: vertical;\n"
+    "}\n"
+    "#output {\n"
+      "height: 200px;\n"
+      "resize: vertical;\n"
+    "}\n"
+    ".action-group > div > div {\n"
+      "margin-bottom: 10px;\n"
+    "}\n"
+    "@media (max-width: 767px) {\n"
+      ".action-group > div > div {\n"
+        "text-align: center !important;\n"
+      "}\n"
+    "}\n"
+    "</style>\n"
     "<div class=\"panel panel-primary\">\n"
       "<div class=\"panel-heading\">Text Editor</div>\n"
       "<div class=\"panel-body\">\n"
         "<form method=\"post\" action=\"%s\" target=\"#main\">\n"
           "<div class=\"form-group\">\n"
             "<div class=\"flex-group\">\n"
-              "<button type=\"button\" class=\"btn btn-default action-open\">Open…</button>\n"
+              "<button type=\"button\" class=\"btn btn-default action-open\" accesskey=\"O\"><u>O</u>pen…</button>\n"
               "<input type=\"text\" class=\"form-control font-monospace\" placeholder=\"File path\"\n"
                 "name=\"path\" id=\"input-path\" value=\"%s\" autocapitalize=\"none\" autocorrect=\"off\"\n"
                 "autocomplete=\"off\" spellcheck=\"false\">\n"
@@ -3433,14 +3486,31 @@ void OvmsWebServer::HandleEditor(PageEntry_t& p, PageContext_t& c)
               "autocapitalize=\"none\" autocorrect=\"off\" autocomplete=\"off\" spellcheck=\"false\"\n"
               "id=\"input-content\" name=\"content\">%s</textarea>\n"
           "</div>\n"
-          "<div class=\"text-center\">\n"
-            "<button type=\"reset\" class=\"btn btn-default\">Reset</button>\n"
-            "<button type=\"button\" class=\"btn btn-default action-reload\">Reload</button>\n"
-            "<button type=\"button\" class=\"btn btn-default action-saveas\">Save as…</button>\n"
-            "<button type=\"button\" class=\"btn btn-primary action-save\">Save</button>\n"
+          "<div class=\"row action-group\">\n"
+            "<div class=\"col-sm-6\">\n"
+              "<div class=\"text-left\">\n"
+                "<button type=\"button\" class=\"btn btn-default action-script-eval\" accesskey=\"V\">E<u>v</u>aluate JS</button>\n"
+                "<button type=\"button\" class=\"btn btn-default action-script-reload\">Reload JS Engine</button>\n"
+              "</div>\n"
+            "</div>\n"
+            "<div class=\"col-sm-6\">\n"
+              "<div class=\"text-right\">\n"
+                "<button type=\"reset\" class=\"btn btn-default\">Reset</button>\n"
+                "<button type=\"button\" class=\"btn btn-default action-reload\">Reload</button>\n"
+                "<button type=\"button\" class=\"btn btn-default action-saveas\">Save as…</button>\n"
+                "<button type=\"button\" class=\"btn btn-primary action-save\" accesskey=\"S\"><u>S</u>ave</button>\n"
+              "</div>\n"
+            "</div>\n"
           "</div>\n"
         "</form>\n"
         "<div class=\"filedialog\" id=\"fileselect\" />\n"
+        "<pre id=\"output\" style=\"display:none\" />\n"
+      "</div>\n"
+      "<div class=\"panel-footer\">\n"
+        "<p>Hints: you don't need to save to evaluate Javascript code. See <a target=\"_blank\"\n"
+          "href=\"https://docs.openvehicles.com/en/latest/userguide/scripting.html#testing-javascript-modules\"\n"
+          ">user guide</a> on how to test a module lib plugin w/o saving and reloading.\n"
+          "Use a second session to test a web plugin.</p>\n"
       "</div>\n"
     "</div>\n"
     , c.encode_html(content).c_str());
@@ -3448,6 +3518,7 @@ void OvmsWebServer::HandleEditor(PageEntry_t& p, PageContext_t& c)
   c.print(
     "<script>\n"
     "(function(){\n"
+      "var $ta = $('#input-content');\n"
       "var path = $('#input-path').val();\n"
       "var quicknav = ['/sd/', '/store/'];\n"
       "var dir = path.replace(/[^/]*$/, '');\n"
@@ -3487,7 +3558,9 @@ void OvmsWebServer::HandleEditor(PageEntry_t& p, PageContext_t& c)
       "});\n"
       "$('.action-save').on('click', function() {\n"
         "path = $('#input-path').val();\n"
-        "if (path)\n"
+        "if (path == '' || path.endsWith('/'))\n"
+          "$('.action-saveas').click();\n"
+        "else\n"
           "$('form').submit();\n"
       "});\n"
       "$('.action-reload').on('click', function() {\n"
@@ -3495,21 +3568,64 @@ void OvmsWebServer::HandleEditor(PageEntry_t& p, PageContext_t& c)
         "if (path)\n"
           "loaduri(\"#main\", \"get\", page.path, { \"path\": path });\n"
       "});\n"
+      "// Reload Javascript engine:\n"
+      "$('.action-script-reload').on('click', function() {\n"
+        "$('#main').addClass('loading');\n"
+        "$ta.focus();\n"
+        "loadcmd('script reload', '#output').then(function(){\n"
+          "$('#main').removeClass('loading');\n"
+          "$('#output').show();\n"
+        "});\n"
+      "});\n"
+      "// Utility: select textarea line\n"
+      "function selectLine(line) {\n"
+        "var ta = $ta.get(0);\n"
+        "// find line:\n"
+        "var txt = ta.value;\n"
+        "var lines = txt.split('\\n');\n"
+        "if (!lines || lines.length < line) return;\n"
+        "var start = 0, end, i;\n"
+        "for (i = 0; i < line-1; i++)\n"
+          "start += lines[i].length + 1;\n"
+        "end = start + lines[i].length;\n"
+        "// select & show line:\n"
+        "ta.focus();\n"
+        "ta.value = txt.substr(0, end);\n"
+        "ta.scrollTop = ta.scrollHeight;\n"
+        "ta.value = txt;\n"
+        "ta.setSelectionRange(start, end);\n"
+      "}\n"
+      "// Evaluate input as Javascript:\n"
+      "$('.action-script-eval').on('click', function() {\n"
+        "$('#main').addClass('loading');\n"
+        "$ta.focus();\n"
+        "loadcmd({ command: $ta.val(), type: 'js' }, '#output').then(function(output){\n"
+          "$('#main').removeClass('loading');\n"
+          "$('#output').show();\n"
+          "if (output == \"\") {\n"
+            "$('#output').text(\"(OK, no output)\");\n"
+            "return;\n"
+          "}\n"
+          "var hasLine = output.match(/\\(line ([0-9]+)\\)/);\n"
+          "if (hasLine && hasLine.length >= 2)\n"
+            "selectLine(hasLine[1]);\n"
+        "});\n"
+      "});\n"
       "/* textarea controls */\n"
       "$('.tac-wrap').on('click', function(ev) {\n"
-        "var $this = $(this), $ta = $this.parent().next();\n"
+        "var $this = $(this);\n"
         "$this.toggleClass(\"active\");\n"
         "$ta.css(\"white-space\", $this.hasClass(\"active\") ? \"pre-wrap\" : \"pre\");\n"
         "if (!supportsTouch) $ta.focus();\n"
       "});\n"
       "$('.tac-smaller').on('click', function(ev) {\n"
-        "var $this = $(this), $ta = $this.parent().next();\n"
+        "var $this = $(this);\n"
         "var fs = parseInt($ta.css(\"font-size\"));\n"
         "$ta.css(\"font-size\", (fs-1)+\"px\");\n"
         "if (!supportsTouch) $ta.focus();\n"
       "});\n"
       "$('.tac-larger').on('click', function(ev) {\n"
-        "var $this = $(this), $ta = $this.parent().next();\n"
+        "var $this = $(this);\n"
         "var fs = parseInt($ta.css(\"font-size\"));\n"
         "$ta.css(\"font-size\", (fs+1)+\"px\");\n"
         "if (!supportsTouch) $ta.focus();\n"
@@ -3519,7 +3635,6 @@ void OvmsWebServer::HandleEditor(PageEntry_t& p, PageContext_t& c)
       "$('#input-content').css(\"height\", prefs.texteditor.height).css(\"font-size\", prefs.texteditor.fontsize);\n"
       "if (prefs.texteditor.wrap) $('.tac-wrap').trigger('click');\n"
       "$('#input-content, .textarea-control').on('click', function(ev) {\n"
-        "$ta = $('#input-content');\n"
         "prefs.texteditor.height = $ta.css(\"height\");\n"
         "prefs.texteditor.fontsize = $ta.css(\"font-size\");\n"
         "prefs.texteditor.wrap = $('.tac-wrap').hasClass(\"active\");\n"

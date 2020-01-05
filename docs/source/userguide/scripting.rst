@@ -77,7 +77,7 @@ It is also possible to deliberately load functions, and other code, into the glo
 persistently, and have that code permanently available and running. When the JavaScript engine 
 initialises, it automatically runs a special startup script::
 
-  /store/script/ovmsmain.js
+  /store/scripts/ovmsmain.js
 
 That script can in turn include other code. If you make a change to such persistent code, and want 
 to reload it, you can with::
@@ -149,6 +149,38 @@ There are a number of **internal modules** already provided with the firmware, a
 provided under the ``int/<modulename>`` namespace. The above JSON module is, for example, provided as
 ``int/JSON`` and automatically loaded into the global context. These internal modules can be directly used (so
 ``JSON.print(this)`` works directly).
+
+
+----------------------------
+Testing JavaScript / Modules
+----------------------------
+
+Use the **editor** (see Tools menu) to test or evaluate arbitrary Javascript code. This can be done
+on the fly, i.e. without saving the code to a file first. Think of it as a server side Javascript
+shell.
+
+**Testing modules** normally involves reloading the engine, as the ``require()`` call caches all loaded 
+modules until restart. To avoid this during module development, use the following template code.
+This mimics the ``require()`` call without caching and allows to do tests within the same evaluation
+run:
+
+.. code-block:: javascript
+
+  // Load module:
+  mymodule = (function(){
+    exports = {};
+    
+    // … insert module code here …
+    
+    return exports;
+  })();
+  
+  // Module API tests:
+  mymodule.myfunction1();
+  JSON.print(mymodule.myfunction2());
+
+As the module is actually loaded into the global context this way just like using ``require()``,
+anything else using the module API (e.g. a web plugin) will also work after evaluation.
 
 
 --------------------------------------
@@ -271,6 +303,82 @@ format. Both by default insert spacing and indentation for readability and accep
   the representation of functions. Using the ``JX`` encoding will omit unnecessary quotings.
 
 
+HTTP
+^^^^
+
+The HTTP API provides asynchronous GET & POST requests for HTTP and HTTPS. Requests can return 
+text and binary data and follow 301/302 redirects automatically. Basic authentication is supported 
+(add username & password to the URL), digest authentication is not yet implemented.
+
+The handler automatically excludes the request objects from gargabe collection until finished 
+(success/failure), so you don't need to store a global reference to the request.
+
+- ``req = HTTP.request(cfg)``
+    Perform asynchronous HTTP/HTTPS GET or POST request.
+
+    Pass the request parameters using the ``cfg`` object:
+
+    - ``url``: standard URL/URI syntax, optionally including user auth and query string
+    - ``post``: optional POST data, set to an empty string to force a POST request. Note: you
+      need to provide this in encoded form. If no ``Content-Type`` header is given, it will 
+      default to ``x-www-form-urlencoded``.
+    - ``headers``: optional array of objects containing key-value pairs of request headers.
+      Note: ``User-Agent`` will be set to the standard OVMS user agent if not present here.
+    - ``timeout``: optional timeout in milliseconds, default: 120 seconds.
+    - ``binary``: optional flag: ``true`` = perform a binary request (see ``response`` object).
+    - ``done``: optional success callback function, called with the ``response`` object as argument,
+      with ``this`` pointing to the request object.
+    - ``fail``: optional error callback function, called with the ``error`` string as argument,
+      with ``this`` pointing to the request object.
+
+    The ``cfg`` object is extended and returned by the API (``req``). It will remain stable at 
+    least until the request has finished and callbacks have been executed. On completion, the 
+    ``req`` object may contain an updated ``url`` and a ``redirectCount`` if redirects have been 
+    followed. Member ``error`` (also passed to the ``fail`` callback) will be set to the error 
+    description if an error occurred.
+
+    On success, member object ``response`` will be present and contain:
+
+    - ``statusCode``: the numerical HTTP Status response code
+    - ``statusText``: the HTTP Status response text
+    - ``headers``: array of response headers, each represented by an object ``{ <name>: <value> }``
+    - ``body``: only for text requests: response body as a standard string
+    - ``data``: only for binary requests: response body as a Uint8Array
+
+    Notes: any HTTP response from the server is considered success, check ``response.statusCode`` 
+    for server specific errors. Callbacks are executed without an output channel, so all ``print`` 
+    outputs will be written to the system log. Hint: use ``JSON.print(this, false)`` in the callback 
+    to get a debug log dump of the request.
+
+    Examples:
+
+    .. code-block:: javascript
+      
+      // simple POST, ignore all results:
+      HTTP.request({ url: "http://smartplug.local/switch", post: "state=on&when=now" });
+      
+      // fetch and inspect a JSON object:
+      HTTP.request({
+        url: "http://solarcontroller.local/status?fmt=json",
+        done: function(resp) {
+          if (resp.statusCode == 200) {
+            var status = JSON.parse(resp.body);
+            if (status["power"] > 5000)
+              OvmsVehicle.StartCharge();
+            else if (status["power"] < 3000)
+              OvmsVehicle.StopCharge();
+          }
+        }
+      });
+      
+      // override user agent, log completed request object:
+      HTTP.request({
+        url: "https://dexters-web.de/f/test.json",
+        headers: [{ "User-Agent": "Mr. What Zit Tooya" }],
+        done: function() { JSON.print(this, false); }
+      });
+
+
 PubSub
 ^^^^^^
 
@@ -318,14 +426,43 @@ OvmsConfig
 
 - ``array = OvmsConfig.Params()``
     Returns the list of available configuration parameters.
-- ``array = OvmsMetrics.Instances(param)``
+- ``array = OvmsConfig.Instances(param)``
     Returns the list of instances for a specific parameter.
-- ``string = OvmsMetrics.Get(param,instance,default)``
+- ``string = OvmsConfig.Get(param,instance,default)``
     Returns the specified parameter/instance value.
-- ``OvmsMetrics.Set(param,instance,value)``
+- ``object = OvmsConfig.GetValues(param, [prefix])``
+    Gets all param instances matching the optional prefix with their associated values.
+    If a prefix is given, the returned property names will have the prefix removed.
+    Note: all values are returned as strings, you need to convert them as needed.
+- ``OvmsConfig.Set(param,instance,value)``
     Sets the specified parameter/instance value.
-- ``OvmsMetrics.Delete(param,instance)``
+- ``OvmsConfig.SetValues(param, prefix, object)``
+    Sets all properties of the given object as param instances after adding the prefix.
+    Note: non-string property values will be converted to their string representation.
+- ``OvmsConfig.Delete(param,instance)``
     Deletes the specified parameter instance.
+
+Beginning with firmware release 3.2.009, a dedicated configuration parameter ``usr`` is provided
+for plugins. You can add new config instances simply by setting them, for example by
+``OvmsConfig.Set("usr", "myplugin.level", 123)`` or by the ``config set`` command.
+
+Read plugin configuration example:
+
+.. code-block:: javascript
+  
+  // Set default configuration:
+  var cfg = { level: 100, enabled: "no" };
+  
+  // Read user configuration:
+  Object.assign(cfg, OvmsConfig.GetValues("usr", "myplugin."));
+  
+  if (cfg["enabled"] == "yes") {
+    print("I'm enabled at level " + Number(cfg["level"]));
+  }
+
+Keep in mind to prefix all newly introduced instances by a unique plugin name, so your plugin
+can nicely coexist with others.
+
 
 OvmsEvents
 ^^^^^^^^^^
