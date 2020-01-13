@@ -310,10 +310,10 @@ The HTTP API provides asynchronous GET & POST requests for HTTP and HTTPS. Reque
 text and binary data and follow 301/302 redirects automatically. Basic authentication is supported 
 (add username & password to the URL), digest authentication is not yet implemented.
 
-The handler automatically excludes the request objects from gargabe collection until finished 
+The handler automatically excludes the request objects from garbage collection until finished 
 (success/failure), so you don't need to store a global reference to the request.
 
-- ``req = HTTP.request(cfg)``
+- ``req = HTTP.Request(cfg)``
     Perform asynchronous HTTP/HTTPS GET or POST request.
 
     Pass the request parameters using the ``cfg`` object:
@@ -330,12 +330,15 @@ The handler automatically excludes the request objects from gargabe collection u
       with ``this`` pointing to the request object.
     - ``fail``: optional error callback function, called with the ``error`` string as argument,
       with ``this`` pointing to the request object.
+    - ``always``: optional final callback function, no arguments, ``this`` = request object.
 
     The ``cfg`` object is extended and returned by the API (``req``). It will remain stable at 
     least until the request has finished and callbacks have been executed. On completion, the 
     ``req`` object may contain an updated ``url`` and a ``redirectCount`` if redirects have been 
     followed. Member ``error`` (also passed to the ``fail`` callback) will be set to the error 
-    description if an error occurred.
+    description if an error occurred. The ``always`` callback if present is called in any case,
+    after a ``done`` or ``fail`` callback has been executed. Check ``this.error`` in the
+    ``always`` callback to know if an error occurred.
 
     On success, member object ``response`` will be present and contain:
 
@@ -350,15 +353,15 @@ The handler automatically excludes the request objects from gargabe collection u
     outputs will be written to the system log. Hint: use ``JSON.print(this, false)`` in the callback 
     to get a debug log dump of the request.
 
-    Examples:
+    **Examples**:
 
     .. code-block:: javascript
       
       // simple POST, ignore all results:
-      HTTP.request({ url: "http://smartplug.local/switch", post: "state=on&when=now" });
+      HTTP.Request({ url: "http://smartplug.local/switch", post: "state=on&when=now" });
       
       // fetch and inspect a JSON object:
-      HTTP.request({
+      HTTP.Request({
         url: "http://solarcontroller.local/status?fmt=json",
         done: function(resp) {
           if (resp.statusCode == 200) {
@@ -372,10 +375,107 @@ The handler automatically excludes the request objects from gargabe collection u
       });
       
       // override user agent, log completed request object:
-      HTTP.request({
+      HTTP.Request({
         url: "https://dexters-web.de/f/test.json",
         headers: [{ "User-Agent": "Mr. What Zit Tooya" }],
-        done: function() { JSON.print(this, false); }
+        always: function() { JSON.print(this, false); }
+      });
+
+- ``HTTP.request()``
+    Legacy alias for ``HTTP.Request()``, please do not use.
+
+
+VFS
+^^^
+
+The VFS API provides asynchronous loading and saving of files on ``/store`` and ``/sd``.
+Text and binary data is supported. Currently only complete files can be loaded, the saver
+supports an append mode. In any case, the data to save/load needs to fit into RAM twice,
+as the buffer needs to be converted to/from Javascript.
+
+The handler automatically excludes the request objects from garbage collection until finished 
+(success/failure), so you don't need to store a global reference to the request.
+
+Loading or saving protected paths (``/store/ovms_config/…``) is not allowed. Saving to
+a path automatically creates missing directories.
+
+See :doc:`/plugin/auxbatmon/README` for a complete application usage example.
+
+- ``req = VFS.Load(cfg)``
+    Perform asynchronous file load.
+
+    Pass the request parameters using the ``cfg`` object:
+
+    - ``path``: full file path, e.g. ``/sd/mydata/telemetry.json``
+    - ``binary``: optional flag: ``true`` = perform a binary request, returned ``data`` will
+      be an Uint8Array)
+    - ``done``: optional success callback function, called with the ``data`` content read as
+      the single argument, ``this`` pointing to the request object
+    - ``fail``: optional error callback function, called with the ``error`` string as argument,
+      with ``this`` pointing to the request object
+    - ``always``: optional final callback function, no arguments, ``this`` = request object
+
+    The ``cfg`` object is extended and returned by the API (``req``). It will remain stable at 
+    least until the request has finished and callbacks have been executed. On success, the 
+    ``req`` object contains a ``data`` property (also passed to the ``done`` callback), which
+    is either a string (text mode) or a Uint8Array (binary mode).
+    
+    Member ``error`` (also passed to the ``fail`` callback) will be set to the error 
+    description if an error occurred. The ``always`` callback if present is called in any case,
+    after a ``done`` or ``fail`` callback has been executed. Check ``this.error`` in the
+    ``always`` callback to know if an error occurred.
+
+    **Example**:
+
+    .. code-block:: javascript
+      
+      // Load a custom telemetry object from a JSON file on SD card:
+      var telemetry;
+      VFS.Load({
+        path: "/sd/mydata/telemetry.json",
+        done: function(data) {
+          telemetry = Duktape.dec('jx', data);
+          // …process telemetry…
+        },
+        fail: function(error) {
+          print("Error loading telemetry: " + error);
+        }
+      });
+
+- ``req = VFS.Save(cfg)``
+    Perform asynchronous file save.
+
+    Pass the request parameters using the ``cfg`` object:
+
+    - ``data``: the string or Uint8Array to save
+    - ``path``: full file path (missing directories will automatically be created)
+    - ``append``: optional flag: ``true`` = append to the end of the file (also creating the
+      file as necessary)
+    - ``done``: optional success callback function, called with no arguments, ``this`` pointing
+      to the request object
+    - ``fail``: optional error callback function, called with the ``error`` string as argument,
+      with ``this`` pointing to the request object
+    - ``always``: optional final callback function, no arguments, ``this`` = request object
+
+    The ``cfg`` object is extended and returned by the API (``req``). It will remain stable at 
+    least until the request has finished and callbacks have been executed.
+    
+    Member ``error`` (also passed to the ``fail`` callback) will be set to the error 
+    description if an error occurred. The ``always`` callback if present is called in any case,
+    after a ``done`` or ``fail`` callback has been executed. Check ``this.error`` in the
+    ``always`` callback to know if an error occurred.
+
+    **Example**:
+
+    .. code-block:: javascript
+      
+      // Save the above telemetry object in JSON format on SD card:
+      VFS.Save({
+        path: "/sd/mydata/telemetry.json",
+        data: Duktape.enc('jx', telemetry),
+        fail: function(error) {
+          print("Error saving telemetry: " + error);
+        }
       });
 
 
@@ -510,9 +610,33 @@ OvmsMetrics
     Returns the float representation of the metric value.
 - ``str = OvmsMetrics.AsJSON(metricname)``
     Returns the JSON representation of the metric value.
+- ``obj = OvmsMetrics.GetValues(filter, decode)``
+    Returns an object of all metrics matching the optional name filter/template (see below),
+    optionally decoded into Javascript types (i.e. numerical values will be JS numbers, arrays
+    will be JS arrays etc.). The object returned is a snapshot, the values won't be updated.
+    
+    The ``filter`` argument may be a string (for substring matching as with ``metrics list``),
+    an array of full metric names, or an object of which the property names are used as
+    the metric names to get. The object won't be changed by the call, see ``Object.assign()``
+    for a simple way to merge objects. Passing an object is especially convenient if you
+    already have an object to collect metrics data.
 
-Hint: to process array metrics from Javascript, parse their JSON representation using ``eval()``, 
-``JSON.parse()`` or ``Duktape.dec()``. Example:
+With the introduction of the ``OvmsMetrics.GetValues()`` call, you can get multiple metrics
+at once and let the system decode them for you. Using this you can for example do:
+
+.. code-block:: javascript
+
+  // Get all metrics matching substring "v.b.c." (vehicle battery cell):
+  var metrics = OvmsMetrics.GetValues("v.b.c.", true);
+  print("Temperature of cell 3: " + metrics["v.b.c.temp"][2] + " °C\n");
+  print("Voltage of cell 7: " + metrics["v.b.c.voltage"][6] + " V\n");
+  
+  // Get some specific metrics:
+  var ovmsinfo = OvmsMetrics.GetValues(["m.version", "m.hardware"]);
+  JSON.print(ovmsinfo);
+
+This obsoletes the old pattern of parsing a metric's JSON representation using ``eval()``, 
+``JSON.parse()`` or ``Duktape.dec()`` you may still find in some plugins. Example:
 
 .. code-block:: javascript
 

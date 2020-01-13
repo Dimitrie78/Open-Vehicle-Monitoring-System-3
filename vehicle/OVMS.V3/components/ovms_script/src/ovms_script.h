@@ -106,6 +106,7 @@ typedef struct
     struct
       {
       const char* text;
+      const char* filename;
       } dt_evalnoresult;
     struct
       {
@@ -216,7 +217,7 @@ class DuktapeObject
  * 
  * Javascript API:
  *  create:
- *     var request = HTTP.request({
+ *     var request = HTTP.Request({
  *       url: "…",
  *       [headers: [{ "key": "value", … }, …]]    // Note: array members may contain multiple headers
  *       [post: "foo=bar&…",]                     // assumed x-www-form-urlencoded w/o Content-Type
@@ -302,7 +303,7 @@ class OvmsScripts
     void DuktapeDispatchWait(duktape_queue_t* msg);
 
   public:
-    void  DuktapeEvalNoResult(const char* text, OvmsWriter* writer=NULL);
+    void  DuktapeEvalNoResult(const char* text, OvmsWriter* writer=NULL, const char* filename=NULL);
     float DuktapeEvalFloatResult(const char* text, OvmsWriter* writer=NULL);
     int   DuktapeEvalIntResult(const char* text, OvmsWriter* writer=NULL);
     void  DuktapeReload();

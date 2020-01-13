@@ -136,11 +136,76 @@ static duk_ret_t DukOvmsMetricFloat(duk_context *ctx)
   OvmsMetric *m = MyMetrics.Find(mn);
   if (m)
     {
-    duk_push_number(ctx, m->AsFloat());
+    // Pushing the float metric as a (double) 'number' lets the float precision errors
+    // become significant in the resulting number; e.g. 11.08 becomes 11.079999923706055.
+    // Rounding the double value needs to determine the proper scale & double division.
+    // Another way is to send the float through the AsString() conversion (with 6 digits
+    // precision), then apply the JS Number() conversion:
+    duk_push_string(ctx, m->AsString().c_str());
+    duk_to_number(ctx, -1);
     return 1;  /* one return value */
     }
   else
     return 0;
+  }
+
+static duk_ret_t DukOvmsMetricGetValues(duk_context *ctx)
+  {
+  OvmsMetric *m;
+  bool decode = duk_opt_boolean(ctx, 1, false);
+  duk_idx_t obj_idx = duk_push_object(ctx);
+  
+  // helper: set object property from metric
+  auto set_metric = [ctx, obj_idx, decode](OvmsMetric *m)
+    {
+    if (decode)
+      {
+      duk_push_string(ctx, m->AsJSON().c_str());
+      duk_json_decode(ctx, -1);
+      }
+    else
+      {
+      duk_push_string(ctx, m->AsString().c_str());
+      }
+    duk_put_prop_string(ctx, obj_idx, m->m_name);
+    };
+
+  if (duk_is_array(ctx, 0))
+    {
+    // get metric names from array:
+    for (int i=0; duk_get_prop_index(ctx, 0, i); i++)
+      {
+      m = MyMetrics.Find(duk_to_string(ctx, -1));
+      if (m) set_metric(m);
+      duk_pop(ctx);
+      }
+    duk_pop(ctx);
+    }
+  else if (duk_is_object(ctx, 0))
+    {
+    // get metric names from object properties:
+    duk_enum(ctx, 0, 0);
+    while (duk_next(ctx, -1, true))
+      {
+      m = MyMetrics.Find(duk_to_string(ctx, -2));
+      if (m) set_metric(m);
+      duk_pop_2(ctx);
+      }
+    duk_pop(ctx);
+    }
+  else
+    {
+    // simple metric name substring filter:
+    const char *filter = duk_opt_string(ctx, 0, "");
+    for (m = MyMetrics.m_first; m; m = m->m_next)
+      {
+      if (*filter && !strstr(m->m_name, filter))
+        continue;
+      set_metric(m);
+      }
+    }
+
+  return 1;
   }
 
 #endif //#ifdef CONFIG_OVMS_SC_JAVASCRIPT_DUKTAPE
@@ -177,6 +242,7 @@ OvmsMetrics::OvmsMetrics()
   dto->RegisterDuktapeFunction(DukOvmsMetricValue, 1, "Value");
   dto->RegisterDuktapeFunction(DukOvmsMetricJSON, 1, "AsJSON");
   dto->RegisterDuktapeFunction(DukOvmsMetricFloat, 1, "AsFloat");
+  dto->RegisterDuktapeFunction(DukOvmsMetricGetValues, 2, "GetValues");
   MyScripts.RegisterDuktapeObject(dto);
 #endif //#ifdef CONFIG_OVMS_SC_JAVASCRIPT_DUKTAPE
   }

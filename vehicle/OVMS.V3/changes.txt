@@ -1,6 +1,10 @@
 Open Vehicle Monitor System v3 - Change log
 
 ????-??-?? ???  ???????  OTA release
+- New command: "vfs df" -- show disk usage
+- Scripting API: added VFS.Load() & VFS.Save()
+- Scripting API: renamed HTTP.request() to HTTP.Request() for API consistency
+- Scripting API: added OvmsMetrics.GetValues()
 - Web UI: editor extended by embedded Javascript evaluation
 - Webserver: /api/execute: support for Javascript evaluation
 - Scripting API: added OvmsConfig.GetValues() & OvmsConfig.SetValues()
