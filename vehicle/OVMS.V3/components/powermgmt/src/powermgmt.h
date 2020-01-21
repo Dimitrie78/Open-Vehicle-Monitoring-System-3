@@ -33,6 +33,19 @@
 #include <sys/types.h>
 #include <string>
 #include <map>
+#include <stdio.h>
+#include <string.h>
+#include "esp_sleep.h"
+#include "nvs.h"
+#include "nvs_flash.h"
+#include "soc/rtc_cntl_reg.h"
+#include "soc/sens_reg.h"
+#include "driver/gpio.h"
+#include "driver/rtc_io.h"
+#include "driver/adc.h"
+#include "driver/dac.h"
+#include "esp32/ulp.h"
+#include "ulp_powermgmt.h"
 #include "ovms_command.h"
 
 #ifdef CONFIG_OVMS_COMP_WEBSERVER
@@ -44,6 +57,9 @@
 #define POWERMGMT_WIFIOFF_DELAY       24 // hours
 #define POWERMGMT_12V_SHUTDOWN_DELAY  30 // minutes
 
+extern const uint8_t ulp_powermgmt_bin_start[] asm("_binary_ulp_powermgmt_bin_start");
+extern const uint8_t ulp_powermgmt_bin_end[]   asm("_binary_ulp_powermgmt_bin_end");
+
 class powermgmt
   {
   public:
@@ -53,6 +69,16 @@ class powermgmt
   public:
     void Ticker1(std::string event, void* data);
     void ConfigChanged(std::string event, void* data);
+    
+    /* This function is called once after power-on reset, to load ULP program into
+     * RTC memory and configure the ADC.
+     */
+    static void init_ulp_program();
+
+    /* This function is called every time before going into deep sleep.
+     * It starts the ULP program and resets measurement counter.
+     */
+    static void start_ulp_program();
 
   private:
     bool m_enabled;
@@ -64,6 +90,7 @@ class powermgmt
     unsigned int m_12v_shutdown_delay;
     bool m_charging;
     bool m_modem_off, m_wifi_off;
+
 
 #ifdef CONFIG_OVMS_COMP_WEBSERVER
   // --------------------------------------------------------------------------
