@@ -83,16 +83,7 @@ void powermgmt::WebCleanup()
 
       if (b12v_shutdown_delay.find_first_not_of("0123456789") != std::string::npos)
         error += "<li data-input=\"user_key\">Invalid shutdown delay!</li>";
-      
-      float n = atof(b12v_ref_volt.c_str());
-      if (n < 0.1 || n > 15.0)
-        error += "<li data-input=\"user_key\">Invalid 12V Ref. Volt!</li>";
-      
-      n = atof(b12v_alert_volt.c_str());
-      if (n < 0.1 || n > 3.0)
-        error += "<li data-input=\"user_key\">Invalid 12V Alert Volt!</li>";
       }
-
 
     if (error == "")
       {
