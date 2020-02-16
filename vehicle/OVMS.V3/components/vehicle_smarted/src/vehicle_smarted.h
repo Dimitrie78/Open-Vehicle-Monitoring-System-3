@@ -176,6 +176,7 @@ class OvmsVehicleSmartED : public OvmsVehicle
     bool m_notify_trip;                     // Notify Trip values after driving end (default=true)
     int m_preclima_time;                    // pre clima time (default=15 minutes)
     int m_reboot_time;                      // Reboot time
+    bool m_gpio_highlow;                    // EGPIO direction
     
     uint16_t HVcontactState;                // contactor state: 0 := OFF, 2 := ON
     uint16_t myBMS_Year;                    // year of battery final testing

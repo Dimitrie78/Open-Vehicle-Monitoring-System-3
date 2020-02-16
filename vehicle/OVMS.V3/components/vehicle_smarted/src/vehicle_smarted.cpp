@@ -144,6 +144,7 @@ void OvmsVehicleSmartED::ConfigChanged(OvmsConfigParam* param) {
   m_lock_state      = MyConfig.GetParamValueBool("xse", "lockstate", false);
   m_reset_trip      = MyConfig.GetParamValueBool("xse", "reset.trip.charge", false);
   m_notify_trip     = MyConfig.GetParamValueBool("xse", "notify.trip", true);
+  m_gpio_highlow    = MyConfig.GetParamValueBool("xse", "gpio_highlow", false);
   
   m_preclima_time   = MyConfig.GetParamValueInt("xse", "preclimatime", 15);
   
@@ -151,6 +152,12 @@ void OvmsVehicleSmartED::ConfigChanged(OvmsConfigParam* param) {
   
   StandardMetrics.ms_v_charge_limit_soc->SetValue((float) MyConfig.GetParamValueInt("xse", "suffsoc", 0), Percentage );
   StandardMetrics.ms_v_charge_limit_range->SetValue((float) MyConfig.GetParamValueInt("xse", "suffrange", 0), Kilometers );
+  
+#ifdef CONFIG_OVMS_COMP_MAX7317
+  MyPeripherals->m_max7317->Output(m_doorlock_port, (m_gpio_highlow ? 1 : 0));
+  MyPeripherals->m_max7317->Output(m_doorunlock_port, (m_gpio_highlow ? 1 : 0));
+  MyPeripherals->m_max7317->Output(m_ignition_port, 0);
+#endif
 }
 
 void OvmsVehicleSmartED::vehicle_smarted_car_on(bool isOn) {
