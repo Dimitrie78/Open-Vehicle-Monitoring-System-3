@@ -154,6 +154,8 @@ class OvmsVehicleSmartED : public OvmsVehicle
     OvmsMetricInt *mt_ed_eco_const;             // eco score on constant driving over last 6 hours
     OvmsMetricInt *mt_ed_eco_coast;             // eco score on coasting over last 6 hours
     OvmsMetricInt *mt_ed_eco_score;             // eco score shown on dashboard over last 6 hours
+    
+    OvmsMetricInt *mt_ed_hv_off_time;           // HV off Timer
 
   private:
     unsigned int m_candata_timer;
