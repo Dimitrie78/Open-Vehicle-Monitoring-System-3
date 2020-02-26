@@ -73,7 +73,7 @@ void OvmsVehicleVWeUP::IncomingFrameCan3(CAN_frame_t* p_frame)
   switch (p_frame->MsgID) {
 
     case 0x61A: // SOC (calculation needs still to be corrected)
-      StandardMetrics.ms_v_bat_soc->SetValue(d[8]/2.55);
+      StandardMetrics.ms_v_bat_soc->SetValue(d[7]/2.55);
       break;
 
     case 0x65F: // VIN
@@ -108,6 +108,10 @@ void OvmsVehicleVWeUP::IncomingFrameCan3(CAN_frame_t* p_frame)
       }
       break;
 
+    case 0x65D: // ODO
+      StandardMetrics.ms_v_pos_odometer->SetValue( ((uint32_t)(d[3] & 0xf) << 12) | ((UINT)d[2] << 8) | d[1] );
+      break;
+
     case 0x320: // Speed
       StandardMetrics.ms_v_env_awake->SetValue(true);
 
@@ -116,7 +120,8 @@ void OvmsVehicleVWeUP::IncomingFrameCan3(CAN_frame_t* p_frame)
       // car_speed16 = ((d[4] << 8)+d[5]-1)/200;      
       // StandardMetrics.ms_v_pos_speed->SetValue(car_speed16);
 
-      StandardMetrics.ms_v_pos_speed->SetValue(d[4]*1.34);
+      // StandardMetrics.ms_v_pos_speed->SetValue(d[4]*1.34);
+      StandardMetrics.ms_v_pos_speed->SetValue(((d[4] << 8) + d[3]-1)/200);
       break;
 
     case 0x571: // 12 Volt
