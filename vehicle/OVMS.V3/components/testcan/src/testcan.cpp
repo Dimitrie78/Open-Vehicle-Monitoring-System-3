@@ -71,16 +71,15 @@ void testcan::ReadLogFileToCan( std::string path, bool send ) {
   while( fgets( s, 256, sf) != NULL ){
     memset(&candata, 0, sizeof(candata));
     sscanf( s, "%s %s %s %s %s %s %s %s %s %s %s", time, canName, canid, candata[0], candata[1], candata[2], candata[3], candata[4], candata[5], candata[6], candata[7]);
+    //ESP_LOGD(TAG, "%s %s %s %s %s %s %s %s %s %s %s", time, canName, canid, candata[0], candata[1], candata[2], candata[3], candata[4], candata[5], candata[6], candata[7]);
     if (strcmp(canName,"1R11")==0) {
-      //ESP_LOGI(TAG, "%s %s %s %s %s %s %s %s %s %s %s", time, canName, canid, candata[0], candata[1], candata[2], candata[3], candata[4], candata[5], candata[6], candata[7]);
-			
       memset(&frame, 0, sizeof(frame));
       int i=1;
       frame.origin = sbus1;
       frame.FIR.U = 0;
       frame.FIR.B.FF = CAN_frame_std;
       frame.MsgID = (int)strtol(canid,NULL,16);
-      for(int k=0;k<7;k++){
+      for(int k=0;k<8;k++){
         if(candata[k] == 0) break;
         else {
           frame.data.u8[k] = strtol(candata[k],NULL,16);
@@ -93,7 +92,6 @@ void testcan::ReadLogFileToCan( std::string path, bool send ) {
         sbus1->Write(&frame);
       else
         MyCan.IncomingFrame(&frame);
-      //vTaskDelay(pdMS_TO_TICKS(100)); 
     }
     if (strcmp(canName,"2R11")==0) {
       memset(&frame, 0, sizeof(frame));
@@ -102,7 +100,7 @@ void testcan::ReadLogFileToCan( std::string path, bool send ) {
       frame.FIR.U = 0;
       frame.FIR.B.FF = CAN_frame_std;
       frame.MsgID = (int)strtol(canid,NULL,16);
-      for(int k=0;k<7;k++){
+      for(int k=0;k<8;k++){
         if(candata[k] == 0) break;
         else {
           frame.data.u8[k] = strtol(candata[k],NULL,16);
@@ -115,7 +113,6 @@ void testcan::ReadLogFileToCan( std::string path, bool send ) {
         sbus2->Write(&frame);
       else
         MyCan.IncomingFrame(&frame);
-      //vTaskDelay(pdMS_TO_TICKS(100)); 
     }
     if (strcmp(canName,"3R11")==0) {
       memset(&frame, 0, sizeof(frame));
@@ -124,20 +121,16 @@ void testcan::ReadLogFileToCan( std::string path, bool send ) {
       frame.FIR.U = 0;
       frame.FIR.B.FF = CAN_frame_std;
       frame.MsgID = (int)strtol(canid,NULL,16);
-      for(int k=0;k<7;k++){
-        if(candata[k] == 0) break;
-        else {
-          frame.data.u8[k] = strtol(candata[k],NULL,16);
-          i++;
-        }
+      for(int k=0;k<8;k++){
+        frame.data.u8[k] = strtol(candata[k],NULL,16);
+        i++;
       }
-      frame.FIR.B.DLC = i;
-      
+      frame.FIR.B.DLC = 8;
+      //ESP_LOGD(TAG, "IFC %03x 8 %02x %02x %02x %02x %02x %02x %02x %02x", frame.MsgID, frame.data.u8[0], frame.data.u8[1], frame.data.u8[2], frame.data.u8[3], frame.data.u8[4], frame.data.u8[5], frame.data.u8[6], frame.data.u8[7]);
       if(send)
         sbus3->Write(&frame);
       else
         MyCan.IncomingFrame(&frame);
-      //vTaskDelay(pdMS_TO_TICKS(100)); 
     }
   }
 
