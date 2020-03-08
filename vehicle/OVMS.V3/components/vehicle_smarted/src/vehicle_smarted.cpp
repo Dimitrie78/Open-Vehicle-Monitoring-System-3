@@ -44,6 +44,7 @@ static const char *TAG = "v-smarted";
 #include "ovms_notify.h"
 #include "ovms_peripherals.h"
 #include "ovms_netmanager.h"
+#include "ovms_boot.h"
 
 #include "vehicle_smarted.h"
 
@@ -695,9 +696,9 @@ void OvmsVehicleSmartED::Ticker1(uint32_t ticker) {
   }
   else if (m_reboot_ticker > 0 && --m_reboot_ticker == 0) {
     SaveStatus();
-    MyNetManager.RestartNetwork();
+    // MyNetManager.RestartNetwork();
+    MyBoot.Restart(); // restart Module
     m_reboot_ticker = m_reboot_time * 60;
-    //MyBoot.Restart(); // restart Module
   }
 }
 
