@@ -704,6 +704,15 @@ void OvmsVehicleSmartED::Ticker1(uint32_t ticker) {
 
 void OvmsVehicleSmartED::Ticker10(uint32_t ticker) {
   HandleCharging();
+  if (StandardMetrics.ms_v_env_on->AsBool()) {
+    if (StandardMetrics.ms_v_env_drivemode->AsInt(1) != 2) {
+      while(StandardMetrics.ms_v_env_drivemode->AsInt(1) != 2) {
+        CommandSetRecu(true);
+        vTaskDelay(50 / portTICK_PERIOD_MS);
+      }
+      MyNotify.NotifyString("info","xse.recu","set recu up");
+    }
+  }
 #ifdef CONFIG_OVMS_COMP_MAX7317
   if(m_lock_state) {
     MyPeripherals->m_max7317->Output((uint8_t)m_doorstatus_port,(uint8_t)1); // set port to input
