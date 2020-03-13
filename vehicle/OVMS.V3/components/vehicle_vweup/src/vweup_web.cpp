@@ -49,7 +49,7 @@ using namespace std;
 void OvmsVehicleVWeUP::WebInit()
 {
   // vehicle menu:
-  MyWebServer.RegisterPage("/xnl/features", "Features",         WebCfgFeatures,                      PageMenu_Vehicle, PageAuth_Cookie);
+  MyWebServer.RegisterPage("/vwup/features", "Features",         WebCfgFeatures,                      PageMenu_Vehicle, PageAuth_Cookie);
 }
 
 /**
@@ -57,11 +57,11 @@ void OvmsVehicleVWeUP::WebInit()
  */
 void OvmsVehicleVWeUP::WebDeInit()
 {
-  MyWebServer.DeregisterPage("/xnl/features");
+  MyWebServer.DeregisterPage("/vwup/features");
 }
 
 /**
- * WebCfgFeatures: configure general parameters (URL /xnl/config)
+ * WebCfgFeatures: configure general parameters (URL /vwup/config)
  */
 void OvmsVehicleVWeUP::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
 {
@@ -83,8 +83,8 @@ void OvmsVehicleVWeUP::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
 
     if (error == "") {
       // store:
-      MyConfig.SetParamValue("xnl", "modelyear", modelyear);
-      MyConfig.SetParamValueBool("xnl", "canwrite",   canwrite);
+      MyConfig.SetParamValue("vwup", "modelyear", modelyear);
+      MyConfig.SetParamValueBool("vwup", "canwrite",   canwrite);
 
       c.head(200);
       c.alert("success", "<p class=\"lead\">VW e-Up feature configuration saved.</p>");
@@ -100,8 +100,8 @@ void OvmsVehicleVWeUP::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
   }
   else {
     // read configuration:
-    modelyear = MyConfig.GetParamValue("xnl", "modelyear", STR(DEFAULT_MODEL_YEAR));
-    canwrite  = MyConfig.GetParamValueBool("xnl", "canwrite", false);
+    modelyear = MyConfig.GetParamValue("vwup", "modelyear", STR(DEFAULT_MODEL_YEAR));
+    canwrite  = MyConfig.GetParamValueBool("vwup", "canwrite", false);
 
     c.head(200);
   }

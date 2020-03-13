@@ -300,14 +300,14 @@ void OvmsVehicleVWeUP::vehicle_vweup_car_on(bool isOn)
     // Log once that car is being turned on
     ESP_LOGI(TAG,"CAR IS ON");
     StandardMetrics.ms_v_env_on->SetValue(true);
-    PollSetState(true);
+    if (vwup_enable_write) PollSetState(true);
     }
   else if (!isOn && StandardMetrics.ms_v_env_on->AsBool())
     {
     // Log once that car is being turned off
     ESP_LOGI(TAG,"CAR IS OFF");
     StandardMetrics.ms_v_env_on->SetValue(false);
-    PollSetState(false);
+    if (vwup_enable_write) PollSetState(false);
     }
   }
 
@@ -441,7 +441,9 @@ OvmsVehicle::vehicle_command_t OvmsVehicleVWeUP::CommandHomelink(int button, int
 OvmsVehicle::vehicle_command_t OvmsVehicleVWeUP::CommandClimateControl(bool climatecontrolon)
   {
   ESP_LOGI(TAG, "CommandClimateControl");
-  return RemoteCommandHandler(climatecontrolon ? ENABLE_CLIMATE_CONTROL : DISABLE_CLIMATE_CONTROL);
+  if (vwup_enable_write)
+    return RemoteCommandHandler(climatecontrolon ? ENABLE_CLIMATE_CONTROL : DISABLE_CLIMATE_CONTROL);
+  else return NotImplemented;
   }
 
 // End of remote climate contol template
