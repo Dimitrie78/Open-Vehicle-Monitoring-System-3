@@ -114,7 +114,7 @@ void OvmsVehicleVWeUP::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
   c.fieldset_start("Vehicle Settings");
   c.input("number", "Model year", "modelyear", modelyear.c_str(), "Default: " STR(DEFAULT_MODEL_YEAR),
     "<p>This sets some parameters that differ for pre 2020 models. I.e. kWh of battery.</p>",
-    "min=\"2013\" step=\"1\"", "");
+    "min=\"2013\" step=\"1\"");
   c.fieldset_end();
 
   c.fieldset_start("Remote Control");
