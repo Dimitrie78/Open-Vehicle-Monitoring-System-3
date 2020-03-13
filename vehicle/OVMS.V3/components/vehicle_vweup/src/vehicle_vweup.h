@@ -32,9 +32,12 @@
 #ifndef __VEHICLE_VWEUP_H__
 #define __VEHICLE_VWEUP_H__
 
+#include "freertos/timers.h"
 #include "vehicle.h"
+#include "ovms_webserver.h"
 
 #define REMOTE_COMMAND_REPEAT_COUNT 24 // number of times to send the remote command after the first time
+#define DEFAULT_MODEL_YEAR 2020
 
 using namespace std;
 
@@ -52,27 +55,44 @@ class OvmsVehicleVWeUP : public OvmsVehicle
     ~OvmsVehicleVWeUP();
 
   public:
+    void ConfigChanged(OvmsConfigParam* param);
+    bool SetFeature(int key, const char* value);
+    const std::string GetFeature(int key);
+
+  public:
     void IncomingFrameCan3(CAN_frame_t* p_frame);
 
   protected:
     virtual void Ticker1(uint32_t ticker);
-    char m_vin[17];
+    char m_vin[18];
 
   public:
     vehicle_command_t CommandHomelink(int button, int durationms=1000);
     vehicle_command_t CommandClimateControl(bool enable);
     void RemoteCommandTimer();
     void CcDisableTimer();
+    bool vin_part1;
+    bool vin_part2;
+    bool vwup_enable_write;
+    int vwup_modelyear;
 
   private:
     void SendCommand(RemoteCommand);
     OvmsVehicle::vehicle_command_t RemoteCommandHandler(RemoteCommand command);
 
-    RemoteCommand nl_remote_command; // command to send, see RemoteCommandTimer()
-    uint8_t nl_remote_command_ticker; // number remaining remote command frames to send
+    RemoteCommand vwup_remote_command; // command to send, see RemoteCommandTimer()
+    uint8_t vwup_remote_command_ticker; // number remaining remote command frames to send
 
     TimerHandle_t m_remoteCommandTimer;
     TimerHandle_t m_ccDisableTimer;
+
+    void vehicle_vweup_car_on(bool isOn);
+
+  public:
+    void WebInit();
+    void WebDeInit();
+    static void WebCfgFeatures(PageEntry_t& p, PageContext_t& c);
+    static void WebCfgBattery(PageEntry_t& p, PageContext_t& c);
 
   };
 
