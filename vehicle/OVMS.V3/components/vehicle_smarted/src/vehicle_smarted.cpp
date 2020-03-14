@@ -308,8 +308,6 @@ void OvmsVehicleSmartED::HandleChargingStatus() {
           isCharging = true;
           // Reset charge kWh
           StandardMetrics.ms_v_charge_kwh->SetValue(0);
-          // set Poll state charging
-          if (m_enable_write) PollSetState(3);
           // Reset trip values
           if (m_reset_trip) {
             StandardMetrics.ms_v_bat_energy_recd->SetValue(0);
@@ -318,6 +316,8 @@ void OvmsVehicleSmartED::HandleChargingStatus() {
             StandardMetrics.ms_v_pos_trip->SetValue(0);
           }
         }
+        // set Poll state charging
+        if (m_enable_write) PollSetState(3);
         
         StandardMetrics.ms_v_charge_pilot->SetValue(true);
         StandardMetrics.ms_v_charge_inprogress->SetValue(true);
@@ -330,6 +330,7 @@ void OvmsVehicleSmartED::HandleChargingStatus() {
       // The car is not charging
       if (StandardMetrics.ms_v_charge_inprogress->AsBool()) {
         // The charge has completed/stopped
+        if (m_enable_write) PollSetState(1);
         StandardMetrics.ms_v_charge_pilot->SetValue(false);
         StandardMetrics.ms_v_charge_inprogress->SetValue(false);
         StandardMetrics.ms_v_charge_mode->SetValue("standard");
