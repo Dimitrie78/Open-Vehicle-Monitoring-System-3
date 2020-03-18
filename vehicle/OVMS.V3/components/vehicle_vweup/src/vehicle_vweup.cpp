@@ -31,7 +31,7 @@
 
 /*
 ;    Subproject:    Integration of support for the VW e-UP
-;    Date:          12th March 2020
+;    Date:          15th March 2020
 ;
 ;    Changes:
 ;    0.1.0  Initial code
@@ -61,6 +61,8 @@
 ;
 ;    0.2.1  Removed battery temperature, corrected outdoor temperature
 ;
+;    0.2.2  Collect VIN only once
+;
 ;    (C) 2020       Chris van der Meijden
 ;
 ;    Big thanx to sharkcow and Dimitrie78.
@@ -78,6 +80,11 @@ static const char *TAG = "v-vweup";
 #include "ovms_webserver.h"
 #include "ovms_events.h"
 #include "ovms_metrics.h"
+
+static const OvmsVehicle::poll_pid_t vwup_polls[] =
+{
+  { 0, 0, 0x00, 0x00, { 0, 0, 0 } }
+};
 
 void v_remoteCommandTimer(TimerHandle_t timer)
   {
@@ -100,9 +107,11 @@ OvmsVehicleVWeUP::OvmsVehicleVWeUP()
 
   MyConfig.RegisterParam("vwup", "VW e-Up", true, true);
   ConfigChanged(NULL);
-  PollSetState(false);
+  PollSetPidList(m_can3, vwup_polls);
+  PollSetState(0);
   vin_part1 = false;
   vin_part2 = false;
+  vin_part3 = false;
 
 #ifdef CONFIG_OVMS_COMP_WEBSERVER
   WebInit();
@@ -165,6 +174,9 @@ void OvmsVehicleVWeUP::IncomingFrameCan3(CAN_frame_t* p_frame)
   {
   uint8_t *d = p_frame->data.u8;
 
+  // This will log all incoming frames
+  // ESP_LOGD(TAG, "IFC %03x 8 %02x %02x %02x %02x %02x %02x %02x %02x", p_frame->MsgID, d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]);
+
   switch (p_frame->MsgID) {
 
     case 0x61A: // SOC. Is this different for > 2019 models? 
@@ -206,7 +218,7 @@ void OvmsVehicleVWeUP::IncomingFrameCan3(CAN_frame_t* p_frame)
             break;
           case 0x02:
             // Part 3 - VIN complete
-            if (vin_part2) {
+            if (vin_part2 && !vin_part3) {
               m_vin[10] = d[1];
               m_vin[11] = d[2];
               m_vin[12] = d[3];
@@ -215,7 +227,8 @@ void OvmsVehicleVWeUP::IncomingFrameCan3(CAN_frame_t* p_frame)
               m_vin[15] = d[6];
               m_vin[16] = d[7];
               m_vin[17] = 0;
-              StandardMetrics.ms_v_vin->SetValue(m_vin);
+              vin_part3 = true;
+              StandardMetrics.ms_v_vin->SetValue((string) m_vin);
             }
             break;
       }
@@ -285,7 +298,8 @@ void OvmsVehicleVWeUP::IncomingFrameCan3(CAN_frame_t* p_frame)
       break;
 
     default:
-      //ESP_LOGD(TAG, "IFC %03x 8 %02x %02x %02x %02x %02x %02x %02x %02x", p_frame->MsgID, d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]);
+      // This will log all unknown incoming frames
+      // ESP_LOGD(TAG, "IFC %03x 8 %02x %02x %02x %02x %02x %02x %02x %02x", p_frame->MsgID, d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]);
       break;
     }
   }
@@ -300,14 +314,14 @@ void OvmsVehicleVWeUP::vehicle_vweup_car_on(bool isOn)
     // Log once that car is being turned on
     ESP_LOGI(TAG,"CAR IS ON");
     StandardMetrics.ms_v_env_on->SetValue(true);
-    if (vwup_enable_write) PollSetState(true);
+    if (vwup_enable_write) PollSetState(1);
     }
   else if (!isOn && StandardMetrics.ms_v_env_on->AsBool())
     {
     // Log once that car is being turned off
     ESP_LOGI(TAG,"CAR IS OFF");
     StandardMetrics.ms_v_env_on->SetValue(false);
-    if (vwup_enable_write) PollSetState(false);
+    if (vwup_enable_write) PollSetState(0);
     }
   }
 
