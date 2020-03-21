@@ -808,31 +808,40 @@ bool OvmsVehicleSmartED::SetFeature(int key, const char *value)
 {
   switch (key)
   {
+    case 0:
+    {
+      int bits = atoi(value);
+      MyConfig.SetParamValueBool("xse", "doreboot",  (bits& 1)!=0);
+      return true;
+    }
+    case 1:
+      MyConfig.SetParamValue("xse", "reboot", value);
+      return true;
+    case 2:
+      MyConfig.SetParamValue("xse", "preclimatime", value);
+      return true;
+    case 3:
+      MyConfig.SetParamValue("xse", "egpio_timout", value);
+      return true;
+    case 4:
+    {
+      int bits = atoi(value);
+      MyConfig.SetParamValueBool("xse", "autosetrecu",  (bits& 1)!=0);
+      return true;
+    }
     case 10:
       MyConfig.SetParamValue("xse", "suffsoc", value);
       return true;
     case 11:
       MyConfig.SetParamValue("xse", "suffrange", value);
       return true;
+    case 12:
+      MyConfig.SetParamValue("xse", "rangeideal", value);
+      return true;
     case 15:
     {
       int bits = atoi(value);
       MyConfig.SetParamValueBool("xse", "canwrite",  (bits& 1)!=0);
-      return true;
-    }
-    case 26:
-      MyConfig.SetParamValue("xse", "preclimatime", value);
-      return true;
-    case 29:
-    {
-      int bits = atoi(value);
-      MyConfig.SetParamValueBool("xse", "doreboot",  (bits& 1)!=0);
-      return true;
-    }
-    case 30:
-    {
-      int bits = atoi(value);
-      MyConfig.SetParamValueBool("xse", "autosetrecu",  (bits& 1)!=0);
       return true;
     }
     default:
@@ -848,29 +857,35 @@ const std::string OvmsVehicleSmartED::GetFeature(int key)
 {
   switch (key)
   {
-    case 10:
-      return MyConfig.GetParamValue("xse", "suffsoc", STR(0));
-    case 11:
-      return MyConfig.GetParamValue("xse", "suffrange", STR(0));
-    case 15:
-    {
-      int bits = ( MyConfig.GetParamValueBool("xse", "canwrite",  false) ?  1 : 0);
-      char buf[4];
-      sprintf(buf, "%d", bits);
-      return std::string(buf);
-    }
-    case 26:
-      return MyConfig.GetParamValue("xse", "preclimatime", STR(15));
-    case 29:
+    case 0:
     {
       int bits = ( MyConfig.GetParamValueBool("xse", "doreboot",  false) ?  1 : 0);
       char buf[4];
       sprintf(buf, "%d", bits);
       return std::string(buf);
     }
-    case 30:
+    case 1:
+      return MyConfig.GetParamValue("xse", "reboot", STR(0));
+    case 2:
+      return MyConfig.GetParamValue("xse", "preclimatime", STR(15));
+    case 3:
+      return MyConfig.GetParamValue("xse", "egpio_timout", STR(5));
+    case 4:
     {
       int bits = ( MyConfig.GetParamValueBool("xse", "autosetrecu",  false) ?  1 : 0);
+      char buf[4];
+      sprintf(buf, "%d", bits);
+      return std::string(buf);
+    }
+    case 10:
+      return MyConfig.GetParamValue("xse", "suffsoc", STR(0));
+    case 11:
+      return MyConfig.GetParamValue("xse", "suffrange", STR(0));
+    case 12:
+      return MyConfig.GetParamValue("xse", "rangeideal", STR(135));
+    case 15:
+    {
+      int bits = ( MyConfig.GetParamValueBool("xse", "canwrite",  false) ?  1 : 0);
       char buf[4];
       sprintf(buf, "%d", bits);
       return std::string(buf);
