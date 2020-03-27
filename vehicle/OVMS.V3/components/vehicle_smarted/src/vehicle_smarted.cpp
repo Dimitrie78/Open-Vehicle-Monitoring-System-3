@@ -506,8 +506,10 @@ void OvmsVehicleSmartED::IncomingFrameCan1(CAN_frame_t* p_frame) {
     {
       uint32_t time = (d[0] * 60 + d[1]) * 60;
       mt_vehicle_time->SetValue(time, Seconds);
-      time = (d[2] * 60 + d[3]) * 60;
-      StandardMetrics.ms_v_charge_timerstart->SetValue(time, Seconds);
+      if(d[3] != 0xFF) {
+        time = (d[2] * 60 + (d[3] & 0x40 ? d[3]-0x40 : d[3]) * 60);
+        StandardMetrics.ms_v_charge_timerstart->SetValue(time, Seconds);
+      }
       break;
     }
     case 0x423: // Ignition, doors, windows, lock, lights, turn signals, rear window heating
@@ -759,7 +761,7 @@ void OvmsVehicleSmartED::RestartNetwork() {
 }
 
 void OvmsVehicleSmartED::AutoSetRecu() {
-  if (StandardMetrics.ms_v_env_on->AsBool() && m_auto_set_recu) {
+  if (StandardMetrics.ms_v_env_on->AsBool() && m_auto_set_recu && m_enable_write) {
     if (StandardMetrics.ms_v_env_drivemode->AsInt(1) != 2) {
       while(StandardMetrics.ms_v_env_drivemode->AsInt(1) != 2) {
         CommandSetRecu(true);
