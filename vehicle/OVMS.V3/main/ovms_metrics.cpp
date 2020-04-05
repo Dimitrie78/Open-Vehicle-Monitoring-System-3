@@ -634,10 +634,11 @@ std::string OvmsMetricInt::AsString(const char* defvalue, metric_unit_t units, i
   if (IsDefined())
     {
     char buffer[33];
+    int value = m_value;
+    if ((units != Other)&&(units != m_units))
+      value = UnitConvert(m_units,units,m_value);
     if (units == TimeUTC || units == TimeLocal)
       {
-      int value = m_value;
-      value = UnitConvert(m_units,units,m_value);
       int seconds = value % 60;
       value /= 60;
       int minutes = value % 60;
@@ -645,8 +646,6 @@ std::string OvmsMetricInt::AsString(const char* defvalue, metric_unit_t units, i
       int hours = value;
       snprintf(buffer, sizeof(buffer), "%02u:%02u:%02u", hours, minutes, seconds);
       }
-    else if ((units != Other)&&(units != m_units))
-      itoa(UnitConvert(m_units,units,m_value),buffer,10);
     else
       itoa (m_value,buffer,10);
     return buffer;
