@@ -161,6 +161,8 @@ void OvmsVehicleSmartED::ConfigChanged(OvmsConfigParam* param) {
   StandardMetrics.ms_v_charge_limit_soc->SetValue((float) MyConfig.GetParamValueInt("xse", "suffsoc", 0), Percentage );
   StandardMetrics.ms_v_charge_limit_range->SetValue((float) MyConfig.GetParamValueInt("xse", "suffrange", 0), Kilometers );
   
+  if (!m_enable_write) PollSetState(0);
+  
 #ifdef CONFIG_OVMS_COMP_MAX7317
   MyPeripherals->m_max7317->Output(m_doorlock_port, (m_gpio_highlow ? 1 : 0));
   MyPeripherals->m_max7317->Output(m_doorunlock_port, (m_gpio_highlow ? 1 : 0));
@@ -567,7 +569,7 @@ void OvmsVehicleSmartED::IncomingFrameCan1(CAN_frame_t* p_frame) {
     case 0x452: // Temp Airflow
     {
       StandardMetrics.ms_v_env_cooling->SetValue(d[0] > 0);
-      StandardMetrics.ms_v_env_cabintemp->SetValue(d[0]*0.5);
+      // StandardMetrics.ms_v_env_cabintemp->SetValue(d[0]*0.5);
       break;
     }
     case 0x3F2: //Eco display
@@ -637,13 +639,19 @@ void OvmsVehicleSmartED::IncomingFrameCan1(CAN_frame_t* p_frame) {
       */
       break;
     }
+    
+    // Polling IDs
+    case 0x7a3:
+    {
+      // 7a3 8 04 61 12 64 00 00 00 00
+      if (d[0] == 0x04 && d[1] == 0x61 && d[2] == 0x12) {
+        StandardMetrics.ms_v_env_cabintemp->SetValue(d[3]/10.0);
+      }
+      // ESP_LOGD(TAG, "%03x 8 %02x %02x %02x %02x %02x %02x %02x %02x", p_frame->MsgID, d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]);
+      break;
+    }
     default: {
-      /*
-      if(p_frame->MsgID == 0x7EF)
-        ESP_LOGD(TAG, "%03x 8 %02x %02x %02x %02x %02x %02x %02x %02x", p_frame->MsgID, d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]);
-      if(p_frame->MsgID == 0x483)
-        ESP_LOGD(TAG, "%03x 8 %02x %02x %02x %02x %02x %02x %02x %02x", p_frame->MsgID, d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]);
-      */
+      // ESP_LOGV(TAG, "%03x 8 %02x %02x %02x %02x %02x %02x %02x %02x", p_frame->MsgID, d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]);
       break;
     }
   }
@@ -689,7 +697,7 @@ void OvmsVehicleSmartED::Ticker1(uint32_t ticker) {
       mt_bus_awake->SetValue(false);
       //StandardMetrics.ms_v_env_awake->SetValue(false);
       StandardMetrics.ms_v_env_hvac->SetValue(false);
-      if (m_enable_write) PollSetState(0);
+      PollSetState(0);
       m_candata_poll = 0;
       // save metrics for crash reboot
       SaveStatus();
