@@ -175,6 +175,7 @@ void OvmsVehicleSmartED::vehicle_smarted_car_on(bool isOn) {
     // Log once that car is being turned on
     ESP_LOGI(TAG,"CAR IS ON");
     StandardMetrics.ms_v_env_awake->SetValue(isOn);
+    StandardMetrics.ms_v_env_valet->SetValue(isOn);
     
     if (m_enable_write) PollSetState(2);
 
@@ -190,6 +191,7 @@ void OvmsVehicleSmartED::vehicle_smarted_car_on(bool isOn) {
     // Log once that car is being turned off
     ESP_LOGI(TAG,"CAR IS OFF");
     StandardMetrics.ms_v_env_awake->SetValue(isOn);
+    StandardMetrics.ms_v_env_valet->SetValue(isOn);
     
     if (mt_c_active->AsBool()) {
       if (m_enable_write) PollSetState(3);
@@ -732,10 +734,6 @@ void OvmsVehicleSmartED::Ticker10(uint32_t ticker) {
     int level = MyPeripherals->m_max7317->Input((uint8_t)m_doorstatus_port);
     StandardMetrics.ms_v_env_locked->SetValue(level == 1 ? false : true);
   }
-  if (m_egpio_timer > 0 && StandardMetrics.ms_v_door_fl->AsBool()) {
-    MyPeripherals->m_max7317->Output(m_ignition_port, 0);
-    StandardMetrics.ms_v_env_valet->SetValue(false);
-  }
 #endif
 }
 
@@ -748,6 +746,11 @@ void OvmsVehicleSmartED::Ticker60(uint32_t ticker) {
       MyPeripherals->m_max7317->Output(m_ignition_port, 0);
       StandardMetrics.ms_v_env_valet->SetValue(false);
     }
+  }
+  if (StandardMetrics.ms_v_env_valet->AsBool() && StandardMetrics.ms_v_bat_soc->AsFloat(0) < 20) {
+    MyPeripherals->m_max7317->Output(m_ignition_port, 0);
+    StandardMetrics.ms_v_env_valet->SetValue(false);
+    m_egpio_timer = 0;
   }
 #endif
 }

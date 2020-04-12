@@ -383,13 +383,19 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandUnlock(const char* pin
 }
 
 OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandActivateValet(const char* pin) {
+  if (StandardMetrics.ms_v_bat_soc->AsFloat() > 20) {
 #ifdef CONFIG_OVMS_COMP_MAX7317
-  ESP_LOGI(TAG,"Ignition EGPIO on port: %d", m_ignition_port);
-  MyPeripherals->m_max7317->Output(m_ignition_port, 1);
-  m_egpio_timer = m_egpio_timout;
-  StandardMetrics.ms_v_env_valet->SetValue(true);
-  return Success;
+    ESP_LOGI(TAG,"Ignition EGPIO on port: %d", m_ignition_port);
+    MyPeripherals->m_max7317->Output(m_ignition_port, 1);
+    m_egpio_timer = m_egpio_timout;
+    StandardMetrics.ms_v_env_valet->SetValue(true);
+    MyNotify.NotifyString("info", "valet.enabled", "Ignition on");
+    return Success;
 #endif
+  } else {
+    MyNotify.NotifyString("info", "valet.enabled", "Soc below 20%, can't activate Ignition");
+    return Fail;
+  }
   return NotImplemented;
 }
 
@@ -399,6 +405,7 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandDeactivateValet(const 
   MyPeripherals->m_max7317->Output(m_ignition_port, 0);
   m_egpio_timer = 0;
   StandardMetrics.ms_v_env_valet->SetValue(false);
+  MyNotify.NotifyString("info", "valet.disabled", "Ignition off");
   return Success;
 #endif
   return NotImplemented;
@@ -526,9 +533,9 @@ void OvmsVehicleSmartED::NotifyTrip() {
 }
 
 void OvmsVehicleSmartED::NotifyValetEnabled() {
-  MyNotify.NotifyString("info", "valet.enabled", "Ignition on");
+  // MyNotify.NotifyString("info", "valet.enabled", "Ignition on");
 }
 
 void OvmsVehicleSmartED::NotifyValetDisabled() {
-  MyNotify.NotifyString("info", "valet.disabled", "Ignition off");
+  // MyNotify.NotifyString("info", "valet.disabled", "Ignition off");
 }
