@@ -1009,7 +1009,7 @@ void simcom::StandardLineHandler(int channel, OvmsBuffer* buf, std::string line)
 void simcom::PowerCycle()
   {
   ESP_LOGI(TAG, "Power Cycle");
-  MyNotify.NotifyString("info", "modem.powercycle", "Modem Power Cycle");
+  // MyNotify.NotifyString("info", "modem.powercycle", "Modem Power Cycle");
   uart_flush(m_uartnum);
 #ifdef CONFIG_OVMS_COMP_MAX7317
   MyPeripherals->m_max7317->Output(MODEM_EGPIO_PWR, 0); // Modem EN/PWR line low
