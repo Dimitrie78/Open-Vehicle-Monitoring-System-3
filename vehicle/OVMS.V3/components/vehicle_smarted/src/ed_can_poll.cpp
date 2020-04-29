@@ -745,9 +745,9 @@ void OvmsVehicleSmartED::BmsDiag(int verbosity, OvmsWriter* writer) {
   
   writer->puts("-------------------------------------------");
   
-  writer->printf("CV mean : %5.0f mV, dV = %.2f mV\n", StdMetrics.ms_v_bat_pack_vavg->AsFloat()*1000, StdMetrics.ms_v_bat_pack_vstddev_max->AsFloat()*1000);
-  writer->printf("CV min  : %5.0f mV\n", StdMetrics.ms_v_bat_pack_vmin->AsFloat()*1000);
-  writer->printf("CV max  : %5.0f mV\n", StdMetrics.ms_v_bat_pack_vmax->AsFloat()*1000);
+  writer->printf("CV mean : %5.0f mV, dV = %.2f mV\n", mt_myBMS_ADCCvolts_mean->AsFloat(), mt_myBMS_ADCCvolts_max->AsFloat() - mt_myBMS_ADCCvolts_min->AsFloat());
+  writer->printf("CV min  : %5.0f mV\n", mt_myBMS_ADCCvolts_min->AsFloat());
+  writer->printf("CV max  : %5.0f mV\n", mt_myBMS_ADCCvolts_max->AsFloat());
   writer->printf("OCVtimer: %d s\n", mt_v_bat_OCVtimer->AsInt());
   
   writer->puts("-------------------------------------------");
