@@ -745,11 +745,13 @@ void OvmsVehicleSmartED::Ticker60(uint32_t ticker) {
       ESP_LOGI(TAG,"Ignition EGPIO off port: %d", m_ignition_port);
       MyPeripherals->m_max7317->Output(m_ignition_port, 0);
       StandardMetrics.ms_v_env_valet->SetValue(false);
+      MyNotify.NotifyString("info", "valet.disabled", "Ignition off");
     }
   }
   if (StandardMetrics.ms_v_env_valet->AsBool() && StandardMetrics.ms_v_bat_soc->AsFloat(0) < 20) {
     MyPeripherals->m_max7317->Output(m_ignition_port, 0);
     StandardMetrics.ms_v_env_valet->SetValue(false);
+    MyNotify.NotifyString("info", "valet.disabled", "Ignition off");
     m_egpio_timer = 0;
   }
 #endif
