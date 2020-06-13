@@ -806,10 +806,10 @@ void OvmsVehicleSmartED::AutoSetRecu() {
 void OvmsVehicleSmartED::ShutDown() {
   float volt = StandardMetrics.ms_v_bat_12v_voltage->AsFloat();
   
-  if (volt > 0 && volt > 10.5) {
+  if (volt > 3 && volt > 10.5) {
     m_shutdown_ticker = 15 * 60;
   } 
-  else if (volt > 0 && volt < 10.5 && --m_shutdown_ticker == 0) {
+  else if (volt > 3 && volt < 10.5 && --m_shutdown_ticker == 0) {
     ESP_LOGW(TAG,"Powering off");
     MyEvents.SignalEvent("v-smarted.power.off",NULL);
     MyNotify.NotifyString("alert", "v-smarted.power.off", "Shutting down OVMS to prevent Battery drain");
