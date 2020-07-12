@@ -34,6 +34,117 @@ OvmsVehicle::vehicle_command_t OvmsVehicleKiaSoulEv::CommandUnlock(const char* p
   return SetDoorLock(true,pin) ? Success:Fail;
   }
 
+OvmsVehicle::vehicle_command_t OvmsVehicleKiaSoulEv::CommandStat(int verbosity, OvmsWriter* writer) {
+  metric_unit_t rangeUnit = (MyConfig.GetParamValue("vehicle", "units.distance") == "M") ? Miles : Kilometers;
+
+  bool chargeport_open = StdMetrics.ms_v_door_chargeport->AsBool();
+  if (chargeport_open)
+    {
+    std::string charge_mode = StdMetrics.ms_v_charge_mode->AsString();
+    std::string charge_state = StdMetrics.ms_v_charge_state->AsString();
+    bool show_details = !(charge_state == "done" || charge_state == "stopped");
+
+    // Translate mode codes:
+    if (charge_mode == "standard")
+      charge_mode = "Standard";
+    else if (charge_mode == "storage")
+      charge_mode = "Storage";
+    else if (charge_mode == "range")
+      charge_mode = "Range";
+    else if (charge_mode == "performance")
+      charge_mode = "Performance";
+
+    // Translate state codes:
+    if (charge_state == "charging")
+      charge_state = "Charging";
+    else if (charge_state == "topoff")
+      charge_state = "Topping off";
+    else if (charge_state == "done")
+      charge_state = "Charge Done";
+    else if (charge_state == "preparing")
+      charge_state = "Preparing";
+    else if (charge_state == "heating")
+      charge_state = "Charging, Heating";
+    else if (charge_state == "stopped")
+      charge_state = "Charge Stopped";
+
+    writer->printf("%s - %s\n", charge_mode.c_str(), charge_state.c_str());
+
+    if (show_details)
+      {
+      writer->printf("%s/%s\n",
+        (char*) StdMetrics.ms_v_charge_voltage->AsUnitString("-", Native, 1).c_str(),
+        (char*) StdMetrics.ms_v_charge_current->AsUnitString("-", Native, 1).c_str());
+
+      int duration_full = StdMetrics.ms_v_charge_duration_full->AsInt();
+      if (duration_full > 0)
+        writer->printf("Full [hh:mm]: %02d:%02d\n", 
+          StdMetrics.ms_v_charge_duration_full->AsInt(0, Hours), 
+          StdMetrics.ms_v_charge_duration_full->AsInt(0, Minutes)-(StdMetrics.ms_v_charge_duration_full->AsInt(0, Hours)*60));
+
+      int duration_soc = StdMetrics.ms_v_charge_duration_soc->AsInt();
+      if (duration_soc > 0)
+        writer->printf("%s [hh:mm]: %02d:%02d\n",
+          (char*) StdMetrics.ms_v_charge_limit_soc->AsUnitString("SOC", Native, 0).c_str(),
+          StdMetrics.ms_v_charge_duration_soc->AsInt(0, Hours), 
+          StdMetrics.ms_v_charge_duration_soc->AsInt(0, Minutes)-(StdMetrics.ms_v_charge_duration_soc->AsInt(0, Hours)*60));
+
+      int duration_range = StdMetrics.ms_v_charge_duration_range->AsInt();
+      if (duration_range > 0)
+        writer->printf("%s [hh:mm]: %02d:%02d\n",
+          (char*) StdMetrics.ms_v_charge_limit_range->AsUnitString("Range", rangeUnit, 0).c_str(),
+          StdMetrics.ms_v_charge_duration_range->AsInt(0, Hours), 
+          StdMetrics.ms_v_charge_duration_range->AsInt(0, Minutes)-(StdMetrics.ms_v_charge_duration_range->AsInt(0, Hours)*60));
+      }
+    }
+  else
+    {
+    writer->puts("Not charging");
+    }
+
+  writer->printf("SOC: %s\n", (char*) StdMetrics.ms_v_bat_soc->AsUnitString("-", Native, 1).c_str());
+
+  const char* range_ideal = StdMetrics.ms_v_bat_range_ideal->AsUnitString("-", rangeUnit, 0).c_str();
+  if (*range_ideal != '-')
+    writer->printf("Ideal range: %s\n", range_ideal);
+
+  const char* range_est = StdMetrics.ms_v_bat_range_est->AsUnitString("-", rangeUnit, 0).c_str();
+  if (*range_est != '-')
+    writer->printf("Est. range: %s\n", range_est);
+
+  const char* chargedkwh = StdMetrics.ms_v_charge_kwh->AsUnitString("-", Native, 3).c_str();
+  if (*chargedkwh != '-')
+    writer->printf("Energy charged: %s\n", chargedkwh);
+
+  const char* odometer = StdMetrics.ms_v_pos_odometer->AsUnitString("-", rangeUnit, 1).c_str();
+  if (*odometer != '-')
+    writer->printf("ODO: %s\n", odometer);
+
+  const char* cac = StdMetrics.ms_v_bat_cac->AsUnitString("-", Native, 1).c_str();
+  if (*cac != '-')
+    writer->printf("CAC: %s\n", cac);
+
+  const char* soh = StdMetrics.ms_v_bat_soh->AsUnitString("-", Native, 1).c_str();
+  if (*soh != '-')
+    writer->printf("SOH: %s\n", soh);
+
+  std::string test_charge_mode = m_v_test_charing_mode->AsString();
+  writer->printf("Test-charing-mode: %s\n", test_charge_mode.c_str());
+  if (m_v_test_charing->AsBool())
+    writer->printf("Test-charing: Charging\n");
+  else
+    writer->printf("Test-charing: None\n");
+
+  if(m_poll_state == 0)
+    writer->printf("Pollstate: None\n");
+  if(m_poll_state == 1)
+    writer->printf("Pollstate: Runnging\n");
+  if(m_poll_state == 2)
+    writer->printf("Pollstate: Charging\n");
+
+  return Success;
+}
+
 /**
  * Command to open trunk
  */

@@ -109,6 +109,8 @@ class OvmsVehicleKiaSoulEv : public KiaVehicle
 
     virtual OvmsVehicle::vehicle_command_t CommandLock(const char* pin);
     virtual OvmsVehicle::vehicle_command_t CommandUnlock(const char* pin);
+    
+    virtual OvmsVehicle::vehicle_command_t CommandStat(int verbosity, OvmsWriter* writer);
 
     bool OpenTrunk(const char* password);
     bool OpenChargePort(const char* password);
@@ -137,6 +139,9 @@ class OvmsVehicleKiaSoulEv : public KiaVehicle
     OvmsMetricInt*	  m_v_pos_arrival_hour;
     OvmsMetricInt*	  m_v_pos_arrival_minute;
     OvmsMetricString*	  m_v_pos_street;
+    
+    OvmsMetricBool*   m_v_test_charing;
+    OvmsMetricString* m_v_test_charing_mode;
 
     bool  ks_emergency_message_sent;
 

@@ -257,6 +257,23 @@ void OvmsVehicleKiaSoulEv::IncomingFrameCan1(CAN_frame_t* p_frame)
 					(float) (((uint16_t) d[7] << 8) | d[6]) / 256.0, kW);
 
 			}
+    // Charging state
+    m_v_test_charing->SetValue( d[3] != 0 );
+    
+    // Charger Type
+    
+    switch ( d[5] ) 
+      {
+      case 0x0D:
+        m_v_test_charing_mode->SetValue("TYPE1");
+        break;
+      case 0x0E:
+        m_v_test_charing_mode->SetValue("J1772");
+        break;
+      default:
+        m_v_test_charing_mode->SetValue("NONE");
+        break;
+      }
 		}
 		break;
 

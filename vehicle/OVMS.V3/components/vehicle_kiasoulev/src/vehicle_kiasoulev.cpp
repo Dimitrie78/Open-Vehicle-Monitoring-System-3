@@ -189,6 +189,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 #include "pcp.h"
 #include "vehicle_kiasoulev.h"
 #include "metrics_standard.h"
@@ -378,6 +379,10 @@ OvmsVehicleKiaSoulEv::OvmsVehicleKiaSoulEv()
 
   m_v_trip_consumption1 = MyMetrics.InitFloat("xks.v.trip.consumption.KWh/100km", 10, 0, Other);
   m_v_trip_consumption2 = MyMetrics.InitFloat("xks.v.trip.consumption.km/kWh", 10, 0, Other);
+
+  // test
+  m_v_test_charing = MyMetrics.InitBool("xks.v.test.charging", SM_STALE_MIN, false);
+  m_v_test_charing_mode = MyMetrics.InitString("xks.v.test.charging.mode", SM_STALE_MIN, "NONE");
 
   m_b_cell_det_max->SetValue(0);
   m_b_cell_det_min->SetValue(0);
@@ -616,41 +621,41 @@ void OvmsVehicleKiaSoulEv::Ticker1(uint32_t ticker)
 		}
 
 	if(m_poll_state==0 && StdMetrics.ms_v_door_chargeport->AsBool() && kia_ready_for_chargepollstate)	{
-  		//Set pollstate charging if car is off and chargeport is open.
-		ESP_LOGI(TAG, "CHARGEDOOR OPEN. READY FOR CHARGING.");
-  		POLLSTATE_CHARGING;
-  		kia_ready_for_chargepollstate = false;
-  		kia_secs_with_no_client = 0; //Reset no client counter
+    //Set pollstate charging if car is off and chargeport is open.
+    ESP_LOGI(TAG, "CHARGEDOOR OPEN. READY FOR CHARGING.");
+    POLLSTATE_CHARGING;
+    kia_ready_for_chargepollstate = false;
+    kia_secs_with_no_client = 0; //Reset no client counter
   }
 
-	//**** AUX Battery drain prevention code ***
-	//If poll state is in CHARGE MODE, charge current is 0 and no clients are connected for 60 seconds, we'll turn off polling.
-	if((StdMetrics.ms_s_v2_peers->AsInt() + StdMetrics.ms_s_v3_peers->AsInt())==0)
-		{
-		if(m_poll_state==2 && (CHARGE_CURRENT == 0))
-			{
-			kia_secs_with_no_client++;
-			if(kia_secs_with_no_client>60)
-				{
-				ESP_LOGI(TAG,"NO CLIENTS. Turning off polling.");
-				POLLSTATE_OFF;
-				}
-			}
-		}
-	//If client connects, we set the appropriate poll state
-	else if(kia_secs_with_no_client>0 && m_poll_state==0)
-		{
-		kia_secs_with_no_client=0;
-		ESP_LOGI(TAG,"CLIENT CONNECTED. Turning on polling.");
-		if(StdMetrics.ms_v_env_on->AsBool())
-			{
-			POLLSTATE_RUNNING;
-			}
-		else
-			{
-			POLLSTATE_CHARGING;
-			}
-		}
+  //**** AUX Battery drain prevention code ***
+  //If poll state is in CHARGE MODE, charge current is 0 and no clients are connected for 60 seconds, we'll turn off polling.
+  if((StdMetrics.ms_s_v2_peers->AsInt() + StdMetrics.ms_s_v3_peers->AsInt())==0)
+    {
+    if(m_poll_state==2 && (CHARGE_CURRENT == 0))
+      {
+      kia_secs_with_no_client++;
+      if(kia_secs_with_no_client>60)
+        {
+        ESP_LOGI(TAG,"NO CLIENTS. Turning off polling.");
+        POLLSTATE_OFF;
+        }
+      }
+    }
+  //If client connects, we set the appropriate poll state
+  else if(kia_secs_with_no_client>0 && m_poll_state==0)
+    {
+    kia_secs_with_no_client=0;
+    ESP_LOGI(TAG,"CLIENT CONNECTED. Turning on polling.");
+    if(StdMetrics.ms_v_env_on->AsBool())
+      {
+      POLLSTATE_RUNNING;
+      }
+    else
+      {
+      POLLSTATE_CHARGING;
+      }
+    }
 	//**** End of AUX Battery drain prevention code ***
 
 	// Check door lock status if clients are connected and we think the status might have changed
@@ -740,25 +745,25 @@ void OvmsVehicleKiaSoulEv::HandleCharging()
 		POLLSTATE_CHARGING;
     }
   else
-  		{
+    {
     // ******* Charging continues: *******
     if (((BAT_SOC > 0) && (LIMIT_SOC > 0) && (BAT_SOC >= LIMIT_SOC) && (kia_last_soc < LIMIT_SOC))
     			|| ((EST_RANGE > 0) && (LIMIT_RANGE > 0)
     					&& (IDEAL_RANGE >= LIMIT_RANGE )
 							&& (kia_last_ideal_range < LIMIT_RANGE )))
-    		{
+      {
       // ...enter state 2=topping off when we've reach the needed range / SOC:
-  			SET_CHARGE_STATE("topoff", NULL);
+        SET_CHARGE_STATE("topoff", NULL);
       }
     else if (BAT_SOC >= 95) // ...else set "topping off" from 94% SOC:
-    		{
-			SET_CHARGE_STATE("topoff", NULL);
-    		}
-  		}
+      {
+        SET_CHARGE_STATE("topoff", NULL);
+      }
+    }
 
   // Check if we have what is needed to calculate remaining minutes
   if (CHARGE_VOLTAGE > 0 && CHARGE_CURRENT > 0)
-  		{
+    {
 //    	//Calculate remaining charge time
 //		float chargeTarget_full 	= ks_battery_capacity;
 //		float chargeTarget_soc 		= ks_battery_capacity;
@@ -787,7 +792,7 @@ void OvmsVehicleKiaSoulEv::HandleCharging()
 //		StdMetrics.ms_v_charge_duration_range->SetValue( calcMinutesRemaining(chargeTarget_range), Minutes);
 
     if (CHARGE_VOLTAGE > 0 && CHARGE_CURRENT > 0)
-    		{
+      {
       	//Calculate remaining charge time
   			float chargeTarget_full 	= 100;
   			float chargeTarget_soc 		= 100;
@@ -814,22 +819,22 @@ void OvmsVehicleKiaSoulEv::HandleCharging()
     		StdMetrics.ms_v_charge_duration_range->SetValue( CalcRemainingChargeMinutes(CHARGE_VOLTAGE*CHARGE_CURRENT, BAT_SOC, chargeTarget_range, ks_battery_capacity, soul_charge_steps), Minutes);
       }
 
-  		}
+    }
   else
-  		{
-  		if( m_v_preheating->AsBool())
-  			{
-  			SET_CHARGE_STATE("heating","scheduledstart");
-  			}
-  		else
-  			{
-  			SET_CHARGE_STATE("charging",NULL);
-  			}
-  		}
+  	{
+  	if( m_v_preheating->AsBool())
+      {
+      SET_CHARGE_STATE("heating","scheduledstart");
+      }
+    else
+      {
+      SET_CHARGE_STATE("charging",NULL);
+      }
+    }
   StdMetrics.ms_v_charge_kwh->SetValue((CUM_CHARGE - kia_cum_charge_start)/10.0, kWh); // kWh charged
   kia_last_soc = BAT_SOC;
   kia_last_ideal_range = IDEAL_RANGE;
-	}
+  }
 
 /**
  * Update metrics when charging stops
@@ -876,9 +881,9 @@ void OvmsVehicleKiaSoulEv::HandleChargeStop()
 void OvmsVehicleKiaSoulEv::SetChargeMetrics(float voltage, float current, float climit, bool chademo)
 	{
 	StdMetrics.ms_v_charge_voltage->SetValue( voltage, Volts );
-	StdMetrics.ms_v_charge_current->SetValue( current, Amps );
+	StdMetrics.ms_v_charge_current->SetValue( isnan(current) ? 0 : current, Amps );
 	StdMetrics.ms_v_charge_mode->SetValue( chademo ? "performance" : "standard");
-	StdMetrics.ms_v_charge_climit->SetValue( climit, Amps);
+	StdMetrics.ms_v_charge_climit->SetValue( isinf(climit) ? 0 : climit, Amps);
 	StdMetrics.ms_v_charge_type->SetValue( chademo ? "chademo" : "type1");
 	StdMetrics.ms_v_charge_substate->SetValue("onrequest");
 
