@@ -136,7 +136,7 @@ OvmsVehicle::vehicle_command_t OvmsVehicleKiaSoulEv::CommandStat(int verbosity, 
     writer->printf("Test-charing: None\n");
 
   if(m_poll_state == 0)
-    writer->printf("Pollstate: None\n");
+    writer->printf("Pollstate: Off\n");
   if(m_poll_state == 1)
     writer->printf("Pollstate: Runnging\n");
   if(m_poll_state == 2)

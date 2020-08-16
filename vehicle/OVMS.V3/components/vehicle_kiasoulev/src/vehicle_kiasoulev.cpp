@@ -597,19 +597,19 @@ void OvmsVehicleKiaSoulEv::Ticker1(uint32_t ticker)
 		}
 
   //Keep charging metrics up to date
-	if (ks_charge_bits.ChargingJ1772)  				// **** J1772 - Type 1  charging ****
+	if (ks_charge_bits.ChargingJ1772 && m_v_test_charing->AsBool())  				// **** J1772 - Type 1  charging ****
 		{
 		SetChargeMetrics(kia_obc_ac_voltage, StdMetrics.ms_v_bat_power->AsFloat(0, Watts) / kia_obc_ac_voltage, 6600 / kia_obc_ac_voltage, false);
 		//TODO SetChargeMetrics(ks_obc_volt, StdMetrics.ms_v_bat_power->AsFloat(0, kW) * 1000 / ks_obc_volt, 6600 / ks_obc_volt, false);
 	  }
-	else if (ks_charge_bits.ChargingChademo)  // **** ChaDeMo charging ****
+	else if (ks_charge_bits.ChargingChademo && m_v_test_charing->AsBool())  // **** ChaDeMo charging ****
 		{
 		SetChargeMetrics(StdMetrics.ms_v_bat_voltage->AsFloat(400,Volts), -StdMetrics.ms_v_bat_current->AsFloat(Amps), m_c_power->AsFloat(0,kW) * 10 / StdMetrics.ms_v_bat_voltage->AsFloat(400,Volts), true);
 	  }
 
 
 	// Check for charging status changes:
-	bool isCharging = (ks_charge_bits.ChargingChademo || ks_charge_bits.ChargingJ1772) 	&& (CHARGE_CURRENT > 0);
+	bool isCharging = (ks_charge_bits.ChargingChademo || ks_charge_bits.ChargingJ1772) 	&& m_v_test_charing->AsBool();
 
 	if (isCharging)
 		{
@@ -620,43 +620,13 @@ void OvmsVehicleKiaSoulEv::Ticker1(uint32_t ticker)
 		HandleChargeStop();
 		}
 
-	if(m_poll_state==0 && StdMetrics.ms_v_door_chargeport->AsBool() && kia_ready_for_chargepollstate)	{
+	if(m_poll_state==0 && StdMetrics.ms_v_door_chargeport->AsBool() && m_v_test_charing->AsBool())	{
     //Set pollstate charging if car is off and chargeport is open.
     ESP_LOGI(TAG, "CHARGEDOOR OPEN. READY FOR CHARGING.");
     POLLSTATE_CHARGING;
     kia_ready_for_chargepollstate = false;
     kia_secs_with_no_client = 0; //Reset no client counter
   }
-
-  //**** AUX Battery drain prevention code ***
-  //If poll state is in CHARGE MODE, charge current is 0 and no clients are connected for 60 seconds, we'll turn off polling.
-  if((StdMetrics.ms_s_v2_peers->AsInt() + StdMetrics.ms_s_v3_peers->AsInt())==0)
-    {
-    if(m_poll_state==2 && (CHARGE_CURRENT == 0))
-      {
-      kia_secs_with_no_client++;
-      if(kia_secs_with_no_client>60)
-        {
-        ESP_LOGI(TAG,"NO CLIENTS. Turning off polling.");
-        POLLSTATE_OFF;
-        }
-      }
-    }
-  //If client connects, we set the appropriate poll state
-  else if(kia_secs_with_no_client>0 && m_poll_state==0)
-    {
-    kia_secs_with_no_client=0;
-    ESP_LOGI(TAG,"CLIENT CONNECTED. Turning on polling.");
-    if(StdMetrics.ms_v_env_on->AsBool())
-      {
-      POLLSTATE_RUNNING;
-      }
-    else
-      {
-      POLLSTATE_CHARGING;
-      }
-    }
-	//**** End of AUX Battery drain prevention code ***
 
 	// Check door lock status if clients are connected and we think the status might have changed
 	if( (StdMetrics.ms_s_v2_peers->AsInt() + StdMetrics.ms_s_v3_peers->AsInt())>0 && kia_check_door_lock)
