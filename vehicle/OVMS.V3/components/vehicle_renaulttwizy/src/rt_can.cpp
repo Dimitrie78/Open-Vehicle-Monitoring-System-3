@@ -59,6 +59,8 @@ using namespace std;
 
 void OvmsVehicleRenaultTwizy::CanResponder(const CAN_frame_t* p_frame)
 {
+  CAN_frame_t txframe;
+
   // debug log helpers:
   static bool is_stopping = false;
   static int last_level = 0;
@@ -76,7 +78,6 @@ void OvmsVehicleRenaultTwizy::CanResponder(const CAN_frame_t* p_frame)
       // --------------------------------------------------------------------------
       // *** BMS: POWER STATUS ***
       
-      // Overwrite BMS>>CHG protocol to limit charge power:
       // cfg_chargelevel = maximum power, 1..7 = 300..2100 W
       int level = (int) cfg_chargelevel;
       if (twizy_flags.EnableWrite
@@ -88,9 +89,22 @@ void OvmsVehicleRenaultTwizy::CanResponder(const CAN_frame_t* p_frame)
         && CAN_BYTE(1) >= 0x90 && CAN_BYTE(1) < 0xb0
         && CAN_BYTE(3) == 0x54)
       {
-        CAN_frame_t txframe = *p_frame;
-        txframe.data.u8[0] = level;
-        txframe.Write();
+        switch (twizy_bms_type) {
+          case BMS_TYPE_EDRV:
+            // Send max charge level command to eDriver BMS:
+            txframe = {};
+            txframe.MsgID = 0x705;
+            txframe.FIR.B.DLC = 8;
+            txframe.data = { 0xBA, (uint8_t)level };
+            txframe.Write(m_can1);
+            break;
+          default:
+            // Overwrite BMS>>CHG protocol to limit charge power:
+            txframe = *p_frame;
+            txframe.data.u8[0] = level;
+            txframe.Write();
+            break;
+        }
         if (level != last_level) {
           last_level = level;
           ESP_LOGV(TAG, "IncomingFrameCan1: new charge level %d", level);
@@ -109,15 +123,27 @@ void OvmsVehicleRenaultTwizy::CanResponder(const CAN_frame_t* p_frame)
       // --------------------------------------------------------------------------
       // CAN ID 0x424: sent every 100 ms (10 per second)
       
-      // Overwrite BMS>>CHG protocol to stop charge:
       // requested by setting twizy_chg_stop_request to true
       if (twizy_flags.EnableWrite
         && (twizy_status & (CAN_STATUS_CHARGING|CAN_STATUS_OFFLINE)) == CAN_STATUS_CHARGING
         && (bool) twizy_chg_stop_request)
       {
-        CAN_frame_t txframe = *p_frame;
-        txframe.data.u8[0] = 0x12; // charge stop request
-        txframe.Write();
+        switch (twizy_bms_type) {
+          case BMS_TYPE_EDRV:
+            // Send stop charge command to eDriver BMS:
+            txframe = {};
+            txframe.MsgID = 0x705;
+            txframe.FIR.B.DLC = 8;
+            txframe.data = { 0xBB };
+            txframe.Write(m_can1);
+            break;
+          default:
+            // Overwrite BMS>>CHG protocol to stop charge:
+            txframe = *p_frame;
+            txframe.data.u8[0] = 0x12; // charge stop request
+            txframe.Write();
+            break;
+        }
         if (!is_stopping) {
           is_stopping = true;
           ESP_LOGV(TAG, "IncomingFrameCan1: stopping charge");
@@ -295,7 +321,7 @@ void OvmsVehicleRenaultTwizy::IncomingFrameCan1(CAN_frame_t* p_frame)
           int bms_temp = (int)CAN_BYTE(3) - 40, prev_temp = m_bms_temp->AsInt();
           m_bms_temp->SetValue(bms_temp);
           if (bms_temp >= BMS_TEMP_ALERT && prev_temp < BMS_TEMP_ALERT) {
-            RequestNotify(SEND_BMSAlert);
+            RequestNotify(SEND_BMSAlert | SEND_BatteryStats);
           }
         }
         else {
@@ -663,15 +689,26 @@ void OvmsVehicleRenaultTwizy::IncomingFrameCan1(CAN_frame_t* p_frame)
         bool layout_changed = false;
         
         // BMS type & states
-        m_bms_type->SetValue((CAN_BYTE(1) & 0b11100000) >> 5);
+        twizy_bms_type = (CAN_BYTE(1) & 0b11100000) >> 5;
+        m_bms_type->SetValue(twizy_bms_type);
         uint8_t bms_error = CAN_BYTE(1) & 0b00011111, prev_error = m_bms_error->AsInt();
         m_bms_state1->SetValue(CAN_BYTE(0));
         m_bms_state2->SetValue(CAN_BYTE(7));
         m_bms_error->SetValue(bms_error);
-        m_bms_balancing->SetValue(CAN_BYTE(5) << 8 | CAN_BYTE(6));
+        
+        // Cell balancing status:
+        std::bitset<16> balancing(CAN_BYTE(5) << 8 | CAN_BYTE(6));
+        m_bms_balancing->SetValue(balancing);
+        if (balancing.any()) {
+          bms_been_balancing |= balancing;
+          for (int i = 0; i < 16; i++) {
+            if (balancing.test(i)) bms_balance_time[i]++;
+          }
+          m_bms_balancetime->SetValue(bms_balance_time);
+        }
         
         if (bms_error && bms_error != prev_error) {
-          RequestNotify(SEND_BMSAlert);
+          RequestNotify(SEND_BMSAlert | SEND_BatteryStats);
         }
         
         // Battery cell voltages 15 + 16:
