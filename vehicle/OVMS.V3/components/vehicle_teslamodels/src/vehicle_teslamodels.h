@@ -36,6 +36,8 @@
 
 using namespace std;
 
+#define TS_CANDATA_TIMEOUT 10
+
 class OvmsVehicleTeslaModelS: public OvmsVehicle
   {
   public:
@@ -48,14 +50,38 @@ class OvmsVehicleTeslaModelS: public OvmsVehicle
     void IncomingFrameCan3(CAN_frame_t* p_frame);
 
   protected:
+    virtual void Ticker1(uint32_t ticker);
     virtual void Notify12vCritical();
     virtual void Notify12vRecovered();
     virtual void NotifyBmsAlerts();
+
+#ifdef CONFIG_OVMS_COMP_TPMS
+  public:
+    virtual bool TPMSRead(std::vector<uint32_t> *tpms);
+    virtual bool TPMSWrite(std::vector<uint32_t> &tpms);
+
+  protected:
+    typedef enum
+      {
+      Idle = 0,
+      Reading,
+      DoneReading,
+      ReadFailed,
+      Writing,
+      DoneWriting,
+      Writefailed
+    } tpms_command_t;
+    tpms_command_t m_tpms_cmd;
+    uint8_t m_tpms_data[16];
+    int m_tpms_pos;
+    uint16_t m_tpms_uds_seed;
+#endif // #ifdef CONFIG_OVMS_COMP_TPMS
 
   protected:
     char m_vin[18];
     char m_type[5];
     uint16_t m_charge_w;
+    unsigned int m_candata_timer;
   };
 
 #endif //#ifndef __VEHICLE_TESLAMODELS_H__

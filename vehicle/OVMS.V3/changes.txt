@@ -1,6 +1,64 @@
 Open Vehicle Monitor System v3 - Change log
 
 ????-??-?? ???  ???????  OTA release
+- Renault Twizy: add eDriver/Virtual BMS data to RT-BAT-C & RT-BAT-P logs
+- Wifi client: support static IP configuration, manually set or automatically applied by SSID
+  New commands:
+    wifi ip static [<ip> <subnet> <gateway>]
+    wifi ip dhcp
+  New configs:
+    wifi.ssid "<ssid>.ovms.staticip" "<ip>,<subnet>,<gateway>"
+
+2020-08-04 MWJ  3.2.014  OTA release
+- Renault Twizy: support VirtualBMS & eDriver BMS (3 cell temperature sensors)
+  New metrics:
+    xrt.bms.type        -- 0=VirtualBMS, 1=eDriver, 7=Standard
+    xrt.bms.state1      -- BMS specific main state
+    xrt.bms.state2      -- BMS specific aux state
+    xrt.bms.error       -- BMS specific error status
+    xrt.bms.temp        -- internal BMS temperature
+    xrt.bms.balancing   -- Cell balancing status
+- Wifi: scanning apclient mode, network selection dialog in wizard & wifi config,
+    scan support in all modes, fixed network selection by signal strength
+    (possibly also fixes issue #387)
+  New/updated commands:
+    wifi scan           -- can now be issued in any mode
+    wifi scan -j        -- output scan result as JSON object (for web UI)
+    wifi reconnect      -- request a client reconnect cycle
+    wifi mode apclient  -- now accepts empty stassid & optional stabssid
+- #377 Make some metrics (e.g. v.b.soc) persistent across warm reboots
+  This includes crashes and firmware updates
+- Tesla Roadster support for TPMS
+- Tesla Model S support for Baolong TPMS
+- General stability improvements related to watchdog and task timeouts
+
+2020-05-31 MWJ  3.2.013 OTA release
+- TLS Trusted CA update (for addtrust/usertrust)
+- TPMS subsystem, and support for K-Line TPMS ECU in Tesla Roadster
+- #374 The server.v2 config section should be read/write
+
+2020-04-22 MWJ  3.2.012 OTA release
+- #357 tpms rear left temperature incorrect in v2 protocol
+- #354 Flush UART buffer when power cycling modem
+- General stability improvements to CAN logging and playback
+
+2020-04-03 MWJ  3.2.011 OTA release
+- #327 Tesla Roadster: Vehicle AWAKE metric not correct
+- #311 OvmsEvents::ScheduleEvent with delay_ms < 10
+- #333 Support for SSL/TLS Trusted Certificate Authorities
+- #334 Support for SSL/TLS MQTT connections in Server v3
+- #335 Support for SSL/TLS MQTT connections in Server v2
+- #338 SSL/TLS maximum segment size forced to 2048 bytes
+- #341 Support paranoid mode in server v2
+- #343 TPMS message has no -1 setting for "disable" in ovms_server_v2.cpp
+- #342 OTA updates available (when not on wifi)
+- #351 Tesla Model S: Spurious vehicle idle alerts after vehicle firmware update
+
+2020-02-03 MWJ  3.2.010 OTA release
+- EGPIO: address multiple ports by input & output command
+- SmartED: issue #293 fixed
+  change savestatus from store to sd
+  Add ecoscore system to drive report and web interface like defunct smart web app. (added by frantek)
 - New command: "vfs df" -- show disk usage
 - Scripting API: added VFS.Load() & VFS.Save()
 - Scripting API: renamed HTTP.request() to HTTP.Request() for API consistency
@@ -14,6 +72,11 @@ Open Vehicle Monitor System v3 - Change log
   New commands:
     xse rptdata     get a Battery Status Report
     xse bmsdiag     get Battery Diagnose Report
+- #225 Fix charge duration display in iOS App
+- #228 AutoFlashSD cleanup ovms3.done before rename
+- #293 Event queue overflow on startup
+- #299 Fix Tesla Roadster vehicle type for 2012 cars
+- #328 Tesla Roadster: Vehicle AWAKE metric not correct
 
 2019-12-13 MWJ  3.2.008  OTA release
 - Add support for 8MB PSRAM (in addition to current 4MB support)

@@ -20,6 +20,16 @@ At one end of the module is the main DB9 connector you will use to connect to th
 
 At the other end of the module is the DA26 expansion connector, the USB diagnostic connector, and a Micro SD card slot.
 
+|clearfix|
+
+.. warning::
+  The **USB port** is a fragile PCB socket without reinforcement. Handle it carefully, do not apply force
+  when plugging or unplugging cables, to not bend the plug. If you need to use the port frequently, two dots
+  of hot glue at the port sides on the PCB can help to avoid breaking it off.
+  
+  If you open the module and take out the board, take care to guide the port carefully and correctly into it's case
+  hole when inserting the board into the casing again. Insert the board USB port side first.
+
 If removing/installing optional expansion boards (such as used for cellular connectivity), please take care to ensure you secure screw down the expansion board using the four pillar posts provided. Also, please ensure that the cellular modem connections are correct (follow the printed table on the modem board to know which antenna is which).
 
 .. image:: warning.png
@@ -35,7 +45,7 @@ Cellular Modem Option and GSM Antenna
 
 The cellular modem option allows you to control your vehicle when out of wifi coverage range. The majority of OVMS users choose this option, and you will require it if you want to monitor your vehicle when away from home or office.
 
-Each OVMS modem module is provided with a Hologram SIM card pre-installed. This low cost service allows you to get cellular connectivity simply. It also allows you to roam between countries without worry.
+OVMS modules sold in USA and Europe are provided with a Hologram SIM card pre-installed. This low cost service allows you to get cellular connectivity simply. It also allows you to roam between countries without worry. For modules purchased from China, we recommend you purchase a Hologram SIM directly from the hologram.io store (also available on Amazon).
 
 Depending on settings, verbosity towards the OVMS server, rhythm of GPS tracking, etc, OVMS v3 will use between 1 and 3 Megabytes per month of data (when using the v2 server protocol).
 

@@ -37,10 +37,7 @@ static const char *TAG = "v-smarted";
 #include <string>
 #include <iomanip>
 #include "pcp.h"
-#include "ovms_metrics.h"
 #include "ovms_events.h"
-#include "ovms_config.h"
-#include "ovms_command.h"
 #include "metrics_standard.h"
 #include "ovms_notify.h"
 #include "ovms_peripherals.h"
@@ -144,6 +141,137 @@ void OvmsVehicleSmartED::xse_RPTdata(int verbosity, OvmsWriter* writer, OvmsComm
   smart->printRPTdata(verbosity, writer);
 }
 
+void OvmsVehicleSmartED::shell_obd_request(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv)
+{
+  OvmsVehicleSmartED* smart = GetInstance(writer);
+  if (!smart)
+    return;
+
+  uint16_t txid = 0, rxid = 0;
+  uint32_t req = 0;
+  string response;
+
+  // parse args:
+  
+  if (argc < 3) {
+    writer->puts("ERROR: too few args, need: txid rxid request");
+    return;
+  }
+  
+  txid = strtol(argv[0], NULL, 16);
+  rxid = strtol(argv[1], NULL, 16);
+  req = strtol(argv[2], NULL, 16);
+
+  // validate request:
+  uint8_t mode = (req <= 0xffff) ? ((req & 0xff00) >> 8) : ((req & 0xff0000) >> 16);
+  if (mode != 0x01 && mode != 0x02 && mode != 0x09 &&
+      mode != 0x10 && mode != 0x1A && mode != 0x21 && mode != 0x22) {
+    writer->puts("ERROR: mode must be one of: 01, 02, 09, 10, 1A, 21 or 22");
+    return;
+  } else if (req > 0xffffff) {
+    writer->puts("ERROR: PID must be 8 or 16 bit");
+    return;
+  }
+
+  // execute request:
+  if (!smart->ObdRequest(txid, rxid, req, response)) {
+    writer->puts("ERROR: timeout waiting for response");
+    return;
+  }
+
+  // output response as hex dump:
+  writer->puts("Response:");
+  char *buf = NULL;
+  size_t rlen = response.size(), offset = 0;
+  do {
+    rlen = FormatHexDump(&buf, response.data() + offset, rlen, 16);
+    offset += 16;
+    writer->puts(buf ? buf : "-");
+  } while (rlen);
+  if (buf)
+    free(buf);
+}
+
+void OvmsVehicleSmartED::shell_obd_request_volts(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv)
+{
+  OvmsVehicleSmartED* smart = GetInstance(writer);
+  if (!smart)
+    return;
+
+  uint16_t txid = 0, rxid = 0;
+  uint32_t req = 0;
+  string response;
+
+  // parse args:
+
+  txid = 0x7E7;
+  rxid = 0x7EF;
+  req = 0x220208;
+
+  // validate request:
+  uint8_t mode = (req <= 0xffff) ? ((req & 0xff00) >> 8) : ((req & 0xff0000) >> 16);
+  if (mode != 0x01 && mode != 0x02 && mode != 0x09 &&
+      mode != 0x10 && mode != 0x1A && mode != 0x21 && mode != 0x22) {
+    writer->puts("ERROR: mode must be one of: 01, 02, 09, 10, 1A, 21 or 22");
+    return;
+  } else if (req > 0xffffff) {
+    writer->puts("ERROR: PID must be 8 or 16 bit");
+    return;
+  }
+
+  // execute request:
+  if (!smart->ObdRequest(txid, rxid, req, response)) {
+    writer->puts("ERROR: timeout waiting for response");
+    return;
+  }
+
+  // output:
+  writer->puts("OK");
+}
+
+void OvmsVehicleSmartED::TempPoll() {
+  vTaskDelay(300 / portTICK_PERIOD_MS);
+  uint8_t data[8] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+
+  canbus *obd;
+  obd = m_can1;
+  
+  data[0] = 0x02;
+  data[1] = 0x10;
+  data[2] = 0x92;
+  obd->WriteStandard(0x7A2, 8, data);
+  vTaskDelay(50 / portTICK_PERIOD_MS);
+  
+  data[0] = 0x02;
+  data[1] = 0xe3;
+  data[2] = 0x01;
+  obd->WriteStandard(0x7A2, 8, data);
+  vTaskDelay(50 / portTICK_PERIOD_MS);
+  
+  data[0] = 0x02;
+  data[1] = 0x21;
+  data[2] = 0x12;
+  obd->WriteStandard(0x7A2, 8, data);
+  vTaskDelay(50 / portTICK_PERIOD_MS);
+  
+  data[0] = 0x02;
+  data[1] = 0x21;
+  data[2] = 0x12;
+  obd->WriteStandard(0x7A2, 8, data);
+  vTaskDelay(50 / portTICK_PERIOD_MS);
+  
+  data[0] = 0x02;
+  data[1] = 0xe3;
+  data[2] = 0x01;
+  obd->WriteStandard(0x7A2, 8, data);
+  vTaskDelay(50 / portTICK_PERIOD_MS);
+  
+  data[0] = 0x02;
+  data[1] = 0x10;
+  data[2] = 0x81;
+  obd->WriteStandard(0x7A2, 8, data);
+}
+
 bool OvmsVehicleSmartED::CommandSetRecu(bool on) {
   if(!m_enable_write)
     return false;
@@ -205,25 +333,23 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandWakeup() {
   
   ESP_LOGI(TAG, "Send Wakeup Command");
   
-  RegisterCanBus(2, CAN_MODE_ACTIVE, CAN_SPEED_500KBPS);
-  vTaskDelay(500 / portTICK_PERIOD_MS);
-  
-  CAN_frame_t frame;
-  memset(&frame, 0, sizeof(frame));
+  if(!mt_bus_awake->AsBool()) {
+    CAN_frame_t frame;
+    memset(&frame, 0, sizeof(frame));
 
-  frame.origin = m_can2;
-  frame.FIR.U = 0;
-  frame.FIR.B.DLC = 4;
-  frame.FIR.B.FF = CAN_frame_std;
-  frame.MsgID = 0x210;
-  frame.callback = NULL;
-  frame.data.u8[0] = 0x01;
-  frame.data.u8[1] = 0x00;
-  frame.data.u8[2] = 0x00;
-  frame.data.u8[3] = 0x00;
-  m_can2->Write(&frame);
-  vTaskDelay(500 / portTICK_PERIOD_MS);
-  m_can2->Stop();
+    frame.origin = m_can2;
+    frame.FIR.U = 0;
+    frame.FIR.B.DLC = 4;
+    frame.FIR.B.FF = CAN_frame_std;
+    frame.MsgID = 0x210;
+    frame.callback = NULL;
+    frame.data.u8[0] = 0x01;
+    frame.data.u8[1] = 0x00;
+    frame.data.u8[2] = 0x00;
+    frame.data.u8[3] = 0x00;
+    m_can2->Write(&frame);
+  }
+  TempPoll();
 
   return Success;
 }
@@ -323,9 +449,9 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandHomelink(int button, i
 OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandLock(const char* pin) {
 #ifdef CONFIG_OVMS_COMP_MAX7317
   //switch 12v to GEP 1
-  MyPeripherals->m_max7317->Output(m_doorlock_port, 1);
+  MyPeripherals->m_max7317->Output(m_doorlock_port, (m_gpio_highlow ? 0 : 1));
   vTaskDelay(500 / portTICK_PERIOD_MS);
-  MyPeripherals->m_max7317->Output(m_doorlock_port, 0);
+  MyPeripherals->m_max7317->Output(m_doorlock_port, (m_gpio_highlow ? 1 : 0));
   StandardMetrics.ms_v_env_locked->SetValue(true);
   return Success;
 #endif
@@ -335,9 +461,9 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandLock(const char* pin) 
 OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandUnlock(const char* pin) {
 #ifdef CONFIG_OVMS_COMP_MAX7317
   //switch 12v to GEP 2 
-  MyPeripherals->m_max7317->Output(m_doorunlock_port, 1);
+  MyPeripherals->m_max7317->Output(m_doorunlock_port, (m_gpio_highlow ? 0 : 1));
   vTaskDelay(500 / portTICK_PERIOD_MS);
-  MyPeripherals->m_max7317->Output(m_doorunlock_port, 0);
+  MyPeripherals->m_max7317->Output(m_doorunlock_port, (m_gpio_highlow ? 1 : 0));
   StandardMetrics.ms_v_env_locked->SetValue(false);
   return Success;
 #endif
@@ -345,13 +471,19 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandUnlock(const char* pin
 }
 
 OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandActivateValet(const char* pin) {
+  if (StandardMetrics.ms_v_bat_soc->AsFloat() > 20) {
 #ifdef CONFIG_OVMS_COMP_MAX7317
-  ESP_LOGI(TAG,"Ignition EGPIO on port: %d", m_ignition_port);
-  MyPeripherals->m_max7317->Output(m_ignition_port, 1);
-  m_egpio_timer = m_egpio_timout;
-  StandardMetrics.ms_v_env_valet->SetValue(true);
-  return Success;
+    ESP_LOGI(TAG,"Ignition EGPIO on port: %d", m_ignition_port);
+    MyPeripherals->m_max7317->Output(m_ignition_port, 1);
+    m_egpio_timer = m_egpio_timout;
+    StandardMetrics.ms_v_env_valet->SetValue(true);
+    MyNotify.NotifyString("info", "valet.enabled", "Ignition on");
+    return Success;
 #endif
+  } else {
+    MyNotify.NotifyString("info", "valet.enabled", "Soc below 20%, can't activate Ignition");
+    return Fail;
+  }
   return NotImplemented;
 }
 
@@ -361,6 +493,7 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandDeactivateValet(const 
   MyPeripherals->m_max7317->Output(m_ignition_port, 0);
   m_egpio_timer = 0;
   StandardMetrics.ms_v_env_valet->SetValue(false);
+  MyNotify.NotifyString("info", "valet.disabled", "Ignition off");
   return Success;
 #endif
   return NotImplemented;
@@ -410,19 +543,23 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandStat(int verbosity, Ov
 
       int duration_full = StdMetrics.ms_v_charge_duration_full->AsInt();
       if (duration_full > 0)
-        writer->printf("Full: %d mins\n", duration_full);
+        writer->printf("Full [hh:mm]: %02d:%02d\n", 
+          StdMetrics.ms_v_charge_duration_full->AsInt(0, Hours), 
+          StdMetrics.ms_v_charge_duration_full->AsInt(0, Minutes)-(StdMetrics.ms_v_charge_duration_full->AsInt(0, Hours)*60));
 
       int duration_soc = StdMetrics.ms_v_charge_duration_soc->AsInt();
       if (duration_soc > 0)
-        writer->printf("%s: %d mins\n",
+        writer->printf("%s [hh:mm]: %02d:%02d\n",
           (char*) StdMetrics.ms_v_charge_limit_soc->AsUnitString("SOC", Native, 0).c_str(),
-          duration_soc);
+          StdMetrics.ms_v_charge_duration_soc->AsInt(0, Hours), 
+          StdMetrics.ms_v_charge_duration_soc->AsInt(0, Minutes)-(StdMetrics.ms_v_charge_duration_soc->AsInt(0, Hours)*60));
 
       int duration_range = StdMetrics.ms_v_charge_duration_range->AsInt();
       if (duration_range > 0)
-        writer->printf("%s: %d mins\n",
+        writer->printf("%s [hh:mm]: %02d:%02d\n",
           (char*) StdMetrics.ms_v_charge_limit_range->AsUnitString("Range", rangeUnit, 0).c_str(),
-          duration_range);
+          StdMetrics.ms_v_charge_duration_range->AsInt(0, Hours), 
+          StdMetrics.ms_v_charge_duration_range->AsInt(0, Minutes)-(StdMetrics.ms_v_charge_duration_range->AsInt(0, Hours)*60));
       }
     }
   else
@@ -449,9 +586,15 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartED::CommandStat(int verbosity, Ov
   if (*odometer != '-')
     writer->printf("ODO: %s\n", odometer);
 
-  const char* cac = StdMetrics.ms_v_bat_cac->AsUnitString("-", Native, 1).c_str();
-  if (*cac != '-')
-    writer->printf("CAC: %s\n", cac);
+  const char* days = mt_v_bat_LastMeas_days->AsUnitString("-", Native, 0).c_str();
+  if (*days != '-') {
+    writer->printf("Last measurement      : %d day(s)\n", mt_v_bat_LastMeas_days->AsInt());
+    writer->printf("Measurement estimation: %.3f\n", mt_v_bat_Cap_meas_quality->AsFloat());
+    writer->printf("Actual estimation     : %.3f\n", mt_v_bat_Cap_combined_quality->AsFloat());
+    writer->printf("CAP mean: %5.0f As/10, %2.1f Ah\n", mt_v_bat_Cap_As_avg->AsFloat(), mt_v_bat_Cap_As_avg->AsFloat()/360.0);
+    writer->printf("CAP min : %5.0f As/10, %2.1f Ah\n", mt_v_bat_Cap_As_min->AsFloat(), mt_v_bat_Cap_As_min->AsFloat()/360.0);
+    writer->printf("CAP max : %5.0f As/10, %2.1f Ah\n", mt_v_bat_Cap_As_max->AsFloat(), mt_v_bat_Cap_As_max->AsFloat()/360.0);
+  }
 
   const char* soh = StdMetrics.ms_v_bat_soh->AsUnitString("-", Native, 1).c_str();
   if (*soh != '-')
@@ -482,9 +625,17 @@ void OvmsVehicleSmartED::NotifyTrip() {
 }
 
 void OvmsVehicleSmartED::NotifyValetEnabled() {
-  MyNotify.NotifyString("info", "valet.enabled", "Ignition on");
+  // MyNotify.NotifyString("info", "valet.enabled", "Ignition on");
 }
 
 void OvmsVehicleSmartED::NotifyValetDisabled() {
-  MyNotify.NotifyString("info", "valet.disabled", "Ignition off");
+  // MyNotify.NotifyString("info", "valet.disabled", "Ignition off");
+}
+
+void OvmsVehicleSmartED::NotifyValetHood() {
+  // MyNotify.NotifyString("alert", "valet.hood", "Vehicle hood opened while in valet mode");
+}
+
+void OvmsVehicleSmartED::NotifyValetTrunk() {
+  // MyNotify.NotifyString("alert", "valet.trunk", "Vehicle trunk opened while in valet mode");
 }

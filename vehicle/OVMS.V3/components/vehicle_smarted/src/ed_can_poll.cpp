@@ -68,10 +68,7 @@ static const char *TAG = "v-smarted";
 #include <string>
 #include <iomanip>
 #include "pcp.h"
-#include "ovms_metrics.h"
 #include "ovms_events.h"
-#include "ovms_config.h"
-#include "ovms_command.h"
 #include "metrics_standard.h"
 #include "ovms_notify.h"
 #include "ovms_utils.h"
@@ -96,7 +93,7 @@ static const OvmsVehicle::poll_pid_t smarted_polls[] =
   { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x022A, {  0,300,0,60 } }, // rqChargerSelCurrent
   { 0x61A, 0x483, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0223, {  0,300,0,60 } }, // rqChargerTemperatures
   { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0xF190, {  0,300,600,0 } }, // rqBattVIN
-  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0208, {  0,300,600,0 } }, // rqBattVolts
+  { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0208, {  0,300,600,60 } }, // rqBattVolts
   { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0310, {  0,300,600,0 } }, // rqBattCapacity
   { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0203, {  0,300,600,0 } }, // rqBattAmps
   { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0207, {  0,300,600,0 } }, // rqBattADCref
@@ -105,7 +102,6 @@ static const OvmsVehicle::poll_pid_t smarted_polls[] =
   //getBatteryRevision
   { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0xF150, {  0,300,600,0 } }, //rqBattHWrev
   { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0xF151, {  0,300,600,0 } }, //rqBattSWrev
-  
   { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0201, {  0,300,600,120 } }, // rqBattTemperatures
   { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0202, {  0,300,600,120 } }, // rqBattModuleTemperatures
   { 0x7E7, 0x7EF, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x030B, {  0,300,600,0 } }, // rqBattHVContactorCyclesLeft
@@ -208,7 +204,7 @@ void OvmsVehicleSmartED::ObdInitPoll() {
  * Incoming poll reply messages
  */
 void OvmsVehicleSmartED::IncomingPollReply(canbus* bus, uint16_t type, uint16_t pid, uint8_t* data, uint8_t length, uint16_t remain) {
-  static string rxbuf;
+  string& rxbuf = smarted_obd_rxbuf;
   static uint16_t last_pid = -1;
   
   if (pid != last_pid) {
@@ -331,6 +327,49 @@ void OvmsVehicleSmartED::IncomingPollReply(canbus* bus, uint16_t type, uint16_t 
       break;
     }
   }
+  
+  // single poll?
+  if (!smarted_obd_rxwait.IsAvail()) {
+    // yes: stop poller & signal response
+    // PollSetPidList(m_can1, NULL);
+    smarted_obd_rxwait.Give();
+  }
+}
+
+bool OvmsVehicleSmartED::ObdRequest(uint16_t txid, uint16_t rxid, uint32_t request, string& response, int timeout_ms /*=3000*/) {
+  OvmsMutexLock lock(&smarted_obd_request);
+
+  // prepare single poll:
+  OvmsVehicle::poll_pid_t poll[] = {
+    { txid, rxid, 0, 0, { 1, 1, 1, 1 } },
+    { 0, 0, 0, 0, { 0, 0, 0, 0 } }
+  };
+  if (request < 0x10000) {
+    poll[0].type = (request & 0xff00) >> 8;
+    poll[0].pid = request & 0xff;
+  } else {
+    poll[0].type = (request & 0xff0000) >> 16;
+    poll[0].pid = request & 0xffff;
+  }
+
+  // stop default polling:
+  PollSetPidList(m_can1, NULL);
+  vTaskDelay(pdMS_TO_TICKS(100));
+
+  // clear rx semaphore, start single poll:
+  smarted_obd_rxwait.Take(0);
+  PollSetPidList(m_can1, poll);
+
+  // wait for response:
+  bool rxok = smarted_obd_rxwait.Take(pdMS_TO_TICKS(timeout_ms));
+  if (rxok == pdTRUE)
+    response = smarted_obd_rxbuf;
+
+  // restore default polling:
+  smarted_obd_rxwait.Give();
+  PollSetPidList(m_can1, smarted_polls);
+
+  return (rxok == pdTRUE);
 }
 
 void OvmsVehicleSmartED::PollReply_BMS_BattAmps(const char* reply_data, uint16_t reply_len) {
@@ -472,6 +511,8 @@ void OvmsVehicleSmartED::PollReply_BMS_BattCapacity(const char* reply_data, uint
   mt_v_bat_Cap_meas_quality->SetValue( value / 65535.0 );
   value = reply_data[422] * 256 + reply_data[423];
   mt_v_bat_Cap_combined_quality->SetValue( value / 65535.0 );
+  
+  StandardMetrics.ms_v_bat_cac->SetValue(mt_v_bat_Cap_As_avg->AsFloat()/360.0, AmpHours);
 }
 
 void OvmsVehicleSmartED::PollReply_NLG6_ChargerPN_HW(const char* reply_data, uint16_t reply_len) {
@@ -697,6 +738,12 @@ void OvmsVehicleSmartED::BmsResetCellCapacitys() {
   }
 }
 
+void OvmsVehicleSmartED::BmsResetCellStats() {
+  BmsResetCellVoltages();
+  BmsResetCellTemperatures();
+  BmsResetCellCapacitys();
+}
+
 void OvmsVehicleSmartED::BmsDiag(int verbosity, OvmsWriter* writer) {
   metric_unit_t rangeUnit = (MyConfig.GetParamValue("vehicle", "units.distance") == "M") ? Miles : Kilometers;
 
@@ -707,6 +754,7 @@ void OvmsVehicleSmartED::BmsDiag(int verbosity, OvmsWriter* writer) {
   
   writer->puts("-------------------------------------------");
   writer->puts("---- ED Battery Management Diagnostics ----");
+  writer->puts("----         OVMS Version 1.1          ----");
   writer->puts("-------------------------------------------");
   
   writer->printf("Battery VIN: %s\n", (char*) mt_myBMS_BattVIN->AsString().c_str());
@@ -746,9 +794,9 @@ void OvmsVehicleSmartED::BmsDiag(int verbosity, OvmsWriter* writer) {
   
   writer->puts("-------------------------------------------");
   
-  writer->printf("CV mean : %5.0f mV, dV = %.2f mV\n", StdMetrics.ms_v_bat_pack_vavg->AsFloat()*1000, StdMetrics.ms_v_bat_pack_vstddev_max->AsFloat()*1000);
-  writer->printf("CV min  : %5.0f mV\n", StdMetrics.ms_v_bat_pack_vmin->AsFloat()*1000);
-  writer->printf("CV max  : %5.0f mV\n", StdMetrics.ms_v_bat_pack_vmax->AsFloat()*1000);
+  writer->printf("CV mean : %5.0f mV, dV = %.2f mV\n", mt_myBMS_ADCCvolts_mean->AsFloat(), mt_myBMS_ADCCvolts_max->AsFloat() - mt_myBMS_ADCCvolts_min->AsFloat());
+  writer->printf("CV min  : %5.0f mV\n", mt_myBMS_ADCCvolts_min->AsFloat());
+  writer->printf("CV max  : %5.0f mV\n", mt_myBMS_ADCCvolts_max->AsFloat());
   writer->printf("OCVtimer: %d s\n", mt_v_bat_OCVtimer->AsInt());
   
   writer->puts("-------------------------------------------");
@@ -832,6 +880,7 @@ void OvmsVehicleSmartED::printRPTdata(int verbosity, OvmsWriter* writer) {
   
   writer->puts("-----------------------------------------");
   writer->puts("---       Battery Status Report       ---");
+  writer->puts("---         OVMS Version 1.0          ---");
   writer->puts("-----------------------------------------");
   
   writer->printf("Battery VIN: %s\n", (char*) mt_myBMS_BattVIN->AsString().c_str());

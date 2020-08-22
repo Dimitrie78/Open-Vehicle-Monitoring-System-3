@@ -57,9 +57,15 @@ changes::
 
   OVMS# metrics ?
   list                 Show all metrics
+  persist              Show persistent metrics info
   set                  Set the value of a metric
   trace                METRIC trace framework
 
+Some metrics are presistent across warm reboots. This prevents
+values such as SOC from being lost when firmware is updated (or in
+the event of a crash). You can display these with ``metrics list
+-p`` and view general information about presistent metrics with
+``metrics persist``.
 
 ----------------
 Standard Metrics
@@ -151,7 +157,7 @@ v.c.substate                                                      scheduledstop,
 v.c.temp                                 16°C                     Charger temperature
 v.c.time                                 0Sec                     Duration of running charge
 v.c.timermode                                                     yes = timer enabled
-v.c.timerstart                                                    Time timer is due to start
+v.c.timerstart                                                    Time timer is due to start, seconds since midnight UTC
 v.c.type                                                          undefined, type1, type2, chademo, roadster, teslaus, supercharger, ccs
 v.c.voltage                              0V                       Momentary charger supply voltage
 v.d.cp                                   yes                      yes = Charge port open
@@ -162,6 +168,7 @@ v.d.rl                                                            yes = Rear lef
 v.d.rr                                                            yes = Rear right door open
 v.d.trunk                                                         yes = Trunk open
 v.e.alarm                                                         yes = Alarm currently sounding
+v.e.aux12v                                                        yes = Auxilliary 12v system is on
 v.e.awake                                no                       yes = Vehicle/bus awake (switched on)
 v.e.c.config                                                      yes = ECU/controller in configuration state
 v.e.c.login                                                       yes = Module logged in at ECU/controller

@@ -43,15 +43,23 @@ static const char *TAG = "v-nissanleaf";
 
 #define MAX_POLL_DATA_LEN 196
 
+enum poll_states
+  {
+  POLLSTATE_OFF,      //- car is off
+  POLLSTATE_ON,       //- car is on
+  POLLSTATE_RUNNING,  //- car is driving
+  POLLSTATE_CHARGING  //- car is charging
+  };
+
 static const OvmsVehicle::poll_pid_t obdii_polls[] =
   {
-    { 0x797, 0x79a, VEHICLE_POLL_TYPE_OBDIIGROUP, 0x81, {  0,999,999 } }, // VIN [19]
-    { 0x797, 0x79a, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x1203, {  0,999,999 } }, // QC [4]
-    { 0x797, 0x79a, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x1205, {  0,999,999 } }, // L0/L1/L2 [4]
-    { 0x79b, 0x7bb, VEHICLE_POLL_TYPE_OBDIIGROUP, 0x01, {  0, 61, 61 } }, // bat [39/41]
-    { 0x79b, 0x7bb, VEHICLE_POLL_TYPE_OBDIIGROUP, 0x02, {  0, 67, 67 } }, // battery voltages [196]
-    { 0x79b, 0x7bb, VEHICLE_POLL_TYPE_OBDIIGROUP, 0x04, {  0,307,307 } }, // battery temperatures [14]
-    { 0, 0, 0x00, 0x00, { 0, 0, 0 } }
+    { 0x797, 0x79a, VEHICLE_POLL_TYPE_OBDIIGROUP, 0x81, {  0, 30, 0, 0 } }, // VIN [19]
+    { 0x797, 0x79a, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x1203, {  0, 30, 0, 0 } }, // QC [4]
+    { 0x797, 0x79a, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x1205, {  0, 30, 0, 0 } }, // L0/L1/L2 [4]
+    { 0x79b, 0x7bb, VEHICLE_POLL_TYPE_OBDIIGROUP, 0x01, {  0, 60, 0, 60 } }, // bat [39/41]
+    { 0x79b, 0x7bb, VEHICLE_POLL_TYPE_OBDIIGROUP, 0x02, {  0, 60, 0, 60 } }, // battery voltages [196]
+    { 0x79b, 0x7bb, VEHICLE_POLL_TYPE_OBDIIGROUP, 0x04, {  0, 300, 0, 300 } }, // battery temperatures [14]
+    { 0, 0, 0x00, 0x00, { 0, 0, 0, 0 } }
   };
 
 void remoteCommandTimer(TimerHandle_t timer)
@@ -115,11 +123,24 @@ OvmsVehicleNissanLeaf::OvmsVehicleNissanLeaf()
   m_soc_nominal = new OvmsMetricFloat("xnl.v.b.soc.nominal", SM_STALE_HIGH, Percentage);
   m_charge_count_qc     = MyMetrics.InitInt("xnl.v.c.count.qc",     SM_STALE_NONE, 0);
   m_charge_count_l0l1l2 = MyMetrics.InitInt("xnl.v.c.count.l0l1l2", SM_STALE_NONE, 0);
+  m_climate_vent = MyMetrics.InitString("v.e.cabin.vent", SM_STALE_MIN, 0);
+  m_climate_intake = MyMetrics.InitString("v.e.cabin.intake", SM_STALE_MIN, 0);
+  m_climate_setpoint = MyMetrics.InitFloat("v.e.cabin.setpoint", SM_STALE_HIGH, 0, Celcius);
+  m_climate_fan_speed = MyMetrics.InitInt("v.e.cabin.fan", SM_STALE_MIN, 0);
+  m_climate_fan_speed_limit = MyMetrics.InitInt("v.e.cabin.fanlimit", SM_STALE_MIN, 0);
+  m_climate_fan_only = MyMetrics.InitBool("xnl.cc.fan.only", SM_STALE_MIN, false);
+  m_climate_remoteheat = MyMetrics.InitBool("xnl.cc.remoteheat", SM_STALE_MIN, false);
+  m_climate_remotecool = MyMetrics.InitBool("xnl.cc.remotecool", SM_STALE_MIN, false);
+  MyMetrics.InitBool("v.e.on", SM_STALE_MIN, false);
+  MyMetrics.InitBool("v.e.awake", SM_STALE_MID, false);
+  MyMetrics.InitBool("v.vin", SM_STALE_NONE, "");
+  MyMetrics.InitString("v.c.state",SM_STALE_MID,"stopped");
+  m_gen1_charger = false;
 
   RegisterCanBus(1,CAN_MODE_ACTIVE,CAN_SPEED_500KBPS);
   RegisterCanBus(2,CAN_MODE_ACTIVE,CAN_SPEED_500KBPS);
-  PollSetPidList(m_can2,obdii_polls);
-  PollSetState(0);
+  PollSetPidList(m_can1,obdii_polls);
+  PollSetState(POLLSTATE_OFF);
 
   MyConfig.RegisterParam("xnl", "Nissan Leaf", true, true);
   ConfigChanged(NULL);
@@ -145,7 +166,9 @@ OvmsVehicleNissanLeaf::~OvmsVehicleNissanLeaf()
   }
 
 void OvmsVehicleNissanLeaf::ConfigChanged(OvmsConfigParam* param)
-{
+  {
+  if (param && param->GetName() != "xnl")
+    return;
   ESP_LOGD(TAG, "Nissan Leaf reload configuration");
 
   // Note that we do not store a configurable maxRange like Kia Soal and Renault Twizy.
@@ -155,12 +178,13 @@ void OvmsVehicleNissanLeaf::ConfigChanged(OvmsConfigParam* param)
   // xnl
   //  suffsoc          	Sufficient SOC [%] (Default: 0=disabled)
   //  suffrange        	Sufficient range [km] (Default: 0=disabled)
-  
+
   StandardMetrics.ms_v_charge_limit_soc->SetValue(   (float) MyConfig.GetParamValueInt("xnl", "suffsoc"),   Percentage );
   StandardMetrics.ms_v_charge_limit_range->SetValue( (float) MyConfig.GetParamValueInt("xnl", "suffrange"), Kilometers );
 
   //TODO nl_enable_write = MyConfig.GetParamValueBool("xnl", "canwrite", false);
-}
+  m_enable_write = MyConfig.GetParamValueBool("xnl", "canwrite", false);
+  }
 
 
 // Takes care of setting all the state appropriate when the car is on
@@ -172,7 +196,8 @@ void OvmsVehicleNissanLeaf::vehicle_nissanleaf_car_on(bool isOn)
     {
     // Log once that car is being turned on
     ESP_LOGI(TAG,"CAR IS ON");
-
+    PollSetBus(m_can2);
+    if (m_enable_write) PollSetState(POLLSTATE_ON);
     // Reset trip values
     StandardMetrics.ms_v_bat_energy_recd->SetValue(0);
     StandardMetrics.ms_v_bat_energy_used->SetValue(0);
@@ -183,11 +208,16 @@ void OvmsVehicleNissanLeaf::vehicle_nissanleaf_car_on(bool isOn)
     {
     // Log once that car is being turned off
     ESP_LOGI(TAG,"CAR IS OFF");
+    //StandardMetrics.ms_v_env_awake->SetValue(false);
+    if (StandardMetrics.ms_v_charge_state->AsString()  != "charging")
+      {
+      PollSetState(POLLSTATE_OFF);
+      }
     }
 
   // Always set this value to prevent it from going stale
   StandardMetrics.ms_v_env_on->SetValue(isOn);
-  PollSetState( (isOn) ? 1 : 0 );
+  //PollSetState( (isOn) ? 1 : 0 ); now based on vehicle states
   }
 
 ////////////////////////////////////////////////////////////////////////
@@ -198,67 +228,101 @@ void OvmsVehicleNissanLeaf::vehicle_nissanleaf_car_on(bool isOn)
 //
 void OvmsVehicleNissanLeaf::vehicle_nissanleaf_charger_status(ChargerStatus status)
   {
+  bool fast_charge  = false;
   switch (status)
     {
     case CHARGER_STATUS_IDLE:
       StandardMetrics.ms_v_charge_inprogress->SetValue(false);
-      StandardMetrics.ms_v_charge_state->SetValue("stopped");
       StandardMetrics.ms_v_charge_substate->SetValue("stopped");
+      StandardMetrics.ms_v_charge_state->SetValue("stopped");
       break;
     case CHARGER_STATUS_PLUGGED_IN_TIMER_WAIT:
+      StandardMetrics.ms_v_door_chargeport->SetValue(true); //see 0x35d, can't use as only open signal
       StandardMetrics.ms_v_charge_inprogress->SetValue(false);
-      StandardMetrics.ms_v_charge_state->SetValue("stopped");
       StandardMetrics.ms_v_charge_substate->SetValue("stopped");
+      StandardMetrics.ms_v_charge_state->SetValue("stopped");
       break;
     case CHARGER_STATUS_QUICK_CHARGING:
+      fast_charge = true;
     case CHARGER_STATUS_CHARGING:
       if (!StandardMetrics.ms_v_charge_inprogress->AsBool())
         {
         StandardMetrics.ms_v_charge_kwh->SetValue(0); // Reset charge kWh
         m_cum_energy_charge_wh = 0.0f;
         }
+      StandardMetrics.ms_v_door_chargeport->SetValue(true); //see 0x35d, can't use as only open signal
       StandardMetrics.ms_v_charge_inprogress->SetValue(true);
-      StandardMetrics.ms_v_charge_state->SetValue("charging");
+      StandardMetrics.ms_v_charge_type->SetValue(fast_charge ? "chademo" : "type1");
+      StdMetrics.ms_v_charge_mode->SetValue(fast_charge ? "performance" : "standard");
       StandardMetrics.ms_v_charge_substate->SetValue("onrequest");
-
+      StandardMetrics.ms_v_charge_state->SetValue("charging");
+      PollSetBus(m_can1);
+      if (m_enable_write) PollSetState(POLLSTATE_CHARGING);
       // TODO only use battery current for Quick Charging, for regular charging
       // we should return AC line current and voltage, not battery
       // TODO does the leaf know the AC line current and voltage?
       // TODO v3 supports negative values here, what happens if we send a negative charge current to a v2 client?
-      if (StandardMetrics.ms_v_bat_current->AsFloat() < 0)
-        {
+      //if (StandardMetrics.ms_v_bat_current->AsFloat() < 0)
+      //  {
         // battery current can go negative when climate control draws more than
         // is available from the charger. We're abusing the line current which
         // is unsigned, so don't underflow it
         //
         // TODO quick charging can draw current from the vehicle
-        StandardMetrics.ms_v_charge_current->SetValue(0);
-        }
-      else
+        //StandardMetrics.ms_v_charge_current->SetValue(0);
+      //  }
+      //else
+      //  {
+        //StandardMetrics.ms_v_charge_current->SetValue(StandardMetrics.ms_v_bat_current->AsFloat());
+      //  }
+      if (m_gen1_charger)
         {
+        StandardMetrics.ms_v_charge_voltage->SetValue(StandardMetrics.ms_v_bat_voltage->AsFloat());
         StandardMetrics.ms_v_charge_current->SetValue(StandardMetrics.ms_v_bat_current->AsFloat());
         }
-      StandardMetrics.ms_v_charge_voltage->SetValue(StandardMetrics.ms_v_bat_voltage->AsFloat());
       break;
     case CHARGER_STATUS_FINISHED:
       // Charging finished
-      StandardMetrics.ms_v_charge_current->SetValue(0);
-      // TODO set this in ovms v2
-      // TODO the charger probably knows the line voltage, when we find where it's
-      // coded, don't zero it out when we're plugged in but not charging
-      StandardMetrics.ms_v_charge_voltage->SetValue(0);
+      if (m_gen1_charger)
+        {
+        StandardMetrics.ms_v_charge_current->SetValue(0);
+        StandardMetrics.ms_v_charge_voltage->SetValue(0);
+        // TODO set this in ovms v2
+        // TODO the charger probably knows the line voltage, when we find where it's
+        // coded, don't zero it out when we're plugged in but not charging
+        }
       StandardMetrics.ms_v_charge_inprogress->SetValue(false);
-      StandardMetrics.ms_v_charge_state->SetValue("done");
+      StandardMetrics.ms_v_door_chargeport->SetValue(false);
       StandardMetrics.ms_v_charge_substate->SetValue("onrequest");
+      StandardMetrics.ms_v_charge_state->SetValue("done");
+      PollSetState(POLLSTATE_OFF);
       break;
     }
   if (status != CHARGER_STATUS_CHARGING && status != CHARGER_STATUS_QUICK_CHARGING)
     {
-    StandardMetrics.ms_v_charge_current->SetValue(0);
-    // TODO the charger probably knows the line voltage, when we find where it's
-    // coded, don't zero it out when we're plugged in but not charging
-    StandardMetrics.ms_v_charge_voltage->SetValue(0);
+    if (m_gen1_charger)
+      {
+      StandardMetrics.ms_v_charge_current->SetValue(0);
+      // TODO the charger probably knows the line voltage, when we find where it's
+      // coded, don't zero it out when we're plugged in but not charging
+      StandardMetrics.ms_v_charge_voltage->SetValue(0);
+      }
+    StandardMetrics.ms_v_charge_mode->SetValue("");
     }
+  }
+
+int OvmsVehicleNissanLeaf::GetNotifyChargeStateDelay(const char* state)
+  {
+    if (StandardMetrics.ms_m_monotonic->AsInt() < 10)
+      return 0; //avoid notify on boot triggered by setting delay
+    else return 5; //allow time for charger to handshake
+  }
+
+// Use to switch can bus to poll without resetting poll ticker
+void OvmsVehicleNissanLeaf::PollSetBus(canbus* bus)
+  {
+  OvmsMutexLock lock(&m_poll_mutex);
+  m_poll_bus = bus;
   }
 
 void OvmsVehicleNissanLeaf::PollReply_Battery(uint8_t reply_data[], uint16_t reply_len)
@@ -328,7 +392,10 @@ void OvmsVehicleNissanLeaf::PollReply_BMS_Volt(uint8_t reply_data[], uint16_t re
   for(i=0; i<96; i++)
     {
     int millivolt = reply_data[i*2] << 8 | reply_data[i*2+1];
-    BmsSetCellVoltage(i, millivolt / 1000.0);
+    if (millivolt < 5000) //ignore invalid readings
+      {
+      BmsSetCellVoltage(i, millivolt / 1000.0);
+      }
     }
   }
 
@@ -425,8 +492,9 @@ void OvmsVehicleNissanLeaf::PollReply_VIN(uint8_t reply_data[], uint16_t reply_l
   //  < 0x79a 61 81
   // [ 0..16] 53 4a 4e 46 41 41 5a 45 30 55 3X 3X 3X 3X 3X 3X 3X
   // [17..18] 00 00
-
-  StandardMetrics.ms_v_vin->SetValue((char*)reply_data);
+  char buf[19];
+  strncpy(buf,(char*)reply_data,reply_len);
+  StandardMetrics.ms_v_vin->SetValue(buf); //(char*)reply_data
   }
 
 // Reassemble all pieces of a multi-frame reply.
@@ -551,7 +619,7 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan1(CAN_frame_t* p_frame)
     case 0x284:
     {
       // certain CAN bus activity counts as state "awake"
-      StandardMetrics.ms_v_env_awake->SetValue(true);
+      //StandardMetrics.ms_v_env_awake->SetValue(true);
 
       uint16_t car_speed16 = d[4];
       car_speed16 = car_speed16 << 8;
@@ -562,6 +630,7 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan1(CAN_frame_t* p_frame)
     }
       break;
     case 0x390:
+    {
       // Gen 2 Charger
       //
       // When the data is valid, can_databuffer[6] is the J1772 maximum
@@ -595,53 +664,185 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan1(CAN_frame_t* p_frame)
       // byte 6 is 0x00, correctly indicating we're unplugged, so we use that
       // for unplugged detection.
       //
-      if (d[3] == 0xb3 ||
-        d[3] == 0x00 ||
-        d[3] == 0x03)
-        {
+      // d[3] appears to be analog voltage signal, whilst d[1] is charge current
+      //if (d[3] == 0xb3 ||
+      //  d[3] == 0x00 ||
+      //  d[3] == 0x03)
+      //  {
         // can_databuffer[6] is the J1772 pilot current, 0.5A per bit
         // TODO enum?
-        StandardMetrics.ms_v_charge_type->SetValue("type1");
-        uint8_t current_limit = (d[6] + 1) / 2;
-        StandardMetrics.ms_v_charge_climit->SetValue(current_limit);
-        StandardMetrics.ms_v_charge_pilot->SetValue(current_limit != 0);
-        StandardMetrics.ms_v_door_chargeport->SetValue(current_limit != 0);
+      StandardMetrics.ms_v_charge_climit->SetValue(d[6] / 2.0f);
+      StandardMetrics.ms_v_charge_current->SetValue(d[1] / 2.0f);
+      //d[3] ramps from 0 to 0xB3 (179) but can sit at 1 due to capacitance?? set >90 to ensure valid signal
+      //use to set pilot signal
+      //d[4] appears to be chademo charge voltage
+      StandardMetrics.ms_v_charge_voltage->SetValue(d[4] > d[3] ? d[4] : d[3]);
+      if (d[3] > 90 || d[4] > 90)
+        {
+        StandardMetrics.ms_v_charge_pilot->SetValue(true);
         }
+      else
+        {
+        StandardMetrics.ms_v_charge_pilot->SetValue(false);
+        }
+      //  }
       switch (d[5])
         {
         case 0x80:
+        case 0x82:
           vehicle_nissanleaf_charger_status(CHARGER_STATUS_IDLE);
           break;
         case 0x83:
           vehicle_nissanleaf_charger_status(CHARGER_STATUS_QUICK_CHARGING);
           break;
-        case 0x88:
-          vehicle_nissanleaf_charger_status(CHARGER_STATUS_CHARGING);
+        case 0x84:
+          vehicle_nissanleaf_charger_status(CHARGER_STATUS_FINISHED);
+          break;
+        case 0x88: // on evse power loss car still reports 0x88
+          if (StandardMetrics.ms_v_charge_pilot->AsBool())
+            {
+            vehicle_nissanleaf_charger_status(CHARGER_STATUS_CHARGING);
+            }
+          else
+            {
+            vehicle_nissanleaf_charger_status(CHARGER_STATUS_FINISHED);
+            }
+          break;
+        case 0x90: //this state appears just before 0x88 and after evse removed (prepare/finish)
+        case 0x92:
+          vehicle_nissanleaf_charger_status(CHARGER_STATUS_IDLE);
           break;
         case 0x98:
           vehicle_nissanleaf_charger_status(CHARGER_STATUS_PLUGGED_IN_TIMER_WAIT);
           break;
         }
+    }
+      break;
+    case 0x54a:
+    {
+      // setpoint gets reset on heatin or cooling off, so we only update it while they are running
+      if (StandardMetrics.ms_v_env_heating->AsBool() || StandardMetrics.ms_v_env_cooling->AsBool())
+      {
+        float setpoint_float = d[4] / 2;
+        m_climate_setpoint->SetValue(setpoint_float);
+      }
+    }
       break;
     case 0x54b:
     {
-      bool hvac_candidate;
-      // this might be a bit field? So far these 6 values indicate HVAC on
-      hvac_candidate =
-        d[1] == 0x0a || // Gen 1 Remote
-        d[1] == 0x48 || // Manual Heating or Fan Only
-        d[1] == 0x4b || // Gen 2 Remote Heating
-        d[1] == 0x71 || // Gen 2 Remote Cooling
-        d[1] == 0x76 || // Auto
-        d[1] == 0x78;   // Manual A/C on
-      StandardMetrics.ms_v_env_hvac->SetValue(hvac_candidate);
-      /* These may only reflect the centre console LEDs, which
-       * means they don't change when remote CC is operating.
-       * They should be replaced when we find better signals that
-       * indicate when heating or cooling is actually occuring.
-       */
-      StandardMetrics.ms_v_env_cooling->SetValue(d[1] & 0x10);
-      StandardMetrics.ms_v_env_heating->SetValue(d[1] & 0x02);
+      int fanspeed_int = d[4] / 8;
+      // todo: actually we need to use individual bits (7:3) here as remaining ones are for something else
+      if ((fanspeed_int < 1) || (fanspeed_int > 7))
+      {
+        fanspeed_int = 0;
+      }
+
+      m_climate_fan_speed->SetValue(fanspeed_int);
+      m_climate_fan_speed_limit->SetValue(7);
+
+      bool fan_only = (d[1] == 0x48 && fanspeed_int != 0);
+      m_climate_fan_only->SetValue(fan_only);
+
+      switch (d[2])
+      {
+      case 0x80:
+        m_climate_vent->SetValue("off");
+        break;
+      case 0x88:
+        m_climate_vent->SetValue("face");
+        break;
+      case 0x90:
+        m_climate_vent->SetValue("face|feet");
+        break;
+      case 0x98:
+        m_climate_vent->SetValue("feet");
+        break;
+      case 0xA0:
+        m_climate_vent->SetValue("windscreen|feet");
+        break;
+      case 0xA8:
+        m_climate_vent->SetValue("windscreen");
+        break;
+
+      default:
+        m_climate_vent->SetValue("");
+        break;
+      }
+
+      switch (d[3])
+      {
+      case 0x09:
+        m_climate_intake->SetValue("recirc");
+        break;
+      case 0x12:
+        m_climate_intake->SetValue("fresh");
+        break;
+      case 0x92:
+        m_climate_intake->SetValue("defrost");
+        break;
+
+      default:
+        m_climate_intake->SetValue("");
+        break;
+      }
+
+      // The following 2 values work only when preheat is activated while connected to charger.
+      m_climate_remoteheat->SetValue(d[1] == 0x4b);
+      m_climate_remotecool->SetValue(d[1] == 0x71);
+
+      bool hvac_calculated = false;
+
+      int model_year = MyConfig.GetParamValueInt("xnl", "modelyear", DEFAULT_MODEL_YEAR);
+
+      if (model_year < 2013)
+      // leaving this legacy (mostly) code part until someone tests the new logic in <2013 cars.
+      {
+        // this might be a bit field? So far these 6 values indicate HVAC on
+        hvac_calculated =
+          d[1] == 0x0a || // Gen 1 Remote
+          d[1] == 0x48 || // Manual Heating or Fan Only
+          d[1] == 0x4b || // Gen 2 Remote Heating
+          d[1] == 0x71 || // Gen 2 Remote Cooling
+          d[1] == 0x76 || // Auto
+          d[1] == 0x78;   // Manual A/C on
+
+        /* These may only reflect the centre console LEDs, which
+        * means they don't change when remote CC is operating.
+        * They should be replaced when we find better signals that
+        * indicate when heating or cooling is actually occuring.
+        */
+        StandardMetrics.ms_v_env_cooling->SetValue(d[1] & 0x10);
+        StandardMetrics.ms_v_env_heating->SetValue(d[1] & 0x02);
+      }
+
+      else
+      // More accurate climate control values for hvac, heating, cooling for 2013+ model year cars.
+      {
+
+        bool cooling = d[1] == 0x78 || /* cool only */
+                       d[1] == 0x79 || /* cool + heat */
+                       d[1] == 0x76;   /* cool + auto */
+
+        // d[1] == 0x47 : heat + auto
+        // d[1] == 0x49 : heat only
+        // d[1] == 0x79 : heat + cool
+
+        bool heating = (d[1] & 0x01);
+
+        // The following value work only when car is on, so we need to use fan/heat/cool values to indicate hvac on as described below
+        bool climate_on = (d[0] == 0x10);
+
+
+        StandardMetrics.ms_v_env_heating->SetValue(heating);
+        StandardMetrics.ms_v_env_cooling->SetValue(cooling);
+
+        hvac_calculated = (climate_on & (m_climate_fan_speed->AsInt() != 0));
+
+      }
+
+      StandardMetrics.ms_v_env_hvac->SetValue(hvac_calculated);
+
+
     }
       break;
     case 0x54c:
@@ -653,6 +854,10 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan1(CAN_frame_t* p_frame)
         {
         StandardMetrics.ms_v_env_temp->SetValue(d[6] / 2.0 - 40);
         }
+
+      // below true when hvac on while charging so must be used for something else. leaving for future use.
+      // m_climate_dev_off1->SetValue(d[1] == 0xff);
+
       break;
     case 0x54f:
       /* Climate control's measurement of temperature inside the car.
@@ -692,7 +897,7 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan1(CAN_frame_t* p_frame)
           // This msg does not give a sensible capacity estimate for 30kWh battery,
           // instead m_battery_energy_capacity is set from message 0x5bc
           break;
-        }      
+        }
       }
       break;
     case 0x5bc:
@@ -750,7 +955,7 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan1(CAN_frame_t* p_frame)
          *     2 |  0 |  5   8  11 | 18* 21  24 |
          *
          * Only type 1 and type 2 24kwh models from before 2016 will report a valid 'range 80%'.
-         * Any type 2 24 or 30kwh models starting mid 2015 (USA/Jap) or 2016 (UK), will always 
+         * Any type 2 24 or 30kwh models starting mid 2015 (USA/Jap) or 2016 (UK), will always
          * return 0x1fff, and therefore never enter this if with mx values 18, 21 or 24.
          * This is linked to Nissan removing the 'long life mode (80%)' from the car settings.
          */
@@ -785,25 +990,28 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan1(CAN_frame_t* p_frame)
       }
       break;
     case 0x5bf:
+      m_gen1_charger = true;
       if (d[4] == 0xb0)
         {
         // Quick Charging
         // TODO enum?
-        StandardMetrics.ms_v_charge_type->SetValue("chademo");
+        //StandardMetrics.ms_v_charge_type->SetValue("chademo");
         StandardMetrics.ms_v_charge_climit->SetValue(120);
         StandardMetrics.ms_v_charge_pilot->SetValue(true);
-        StandardMetrics.ms_v_door_chargeport->SetValue(true);
+        //StandardMetrics.ms_v_door_chargeport->SetValue(true);
         }
       else
         {
         // Maybe J1772 is connected
         // can_databuffer[2] is the J1772 maximum available current, 0 if we're not plugged in
         // TODO enum?
-        StandardMetrics.ms_v_charge_type->SetValue("type1");
         uint8_t current_limit = d[2] / 5;
         StandardMetrics.ms_v_charge_climit->SetValue(current_limit);
-        StandardMetrics.ms_v_charge_pilot->SetValue(current_limit != 0);
-        StandardMetrics.ms_v_door_chargeport->SetValue(current_limit != 0);
+        if (current_limit > 0 && current_limit <= 32)
+          {
+          //StandardMetrics.ms_v_charge_type->SetValue("type1");
+          StandardMetrics.ms_v_charge_pilot->SetValue(true);
+          }
         }
 
       switch (d[4])
@@ -887,10 +1095,14 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan2(CAN_frame_t* p_frame)
           break;
         case 2: // Reverse
           StandardMetrics.ms_v_env_gear->SetValue(-1);
+          StandardMetrics.ms_v_env_on->SetValue(true);
+          if (m_enable_write) PollSetState(POLLSTATE_RUNNING);
           break;
         case 4: // Drive
         case 7: // Drive/B (ECO on some models)
           StandardMetrics.ms_v_env_gear->SetValue(1);
+          StandardMetrics.ms_v_env_on->SetValue(true);
+          if (m_enable_write) PollSetState(POLLSTATE_RUNNING);
           break;
         }
       break;
@@ -936,6 +1148,13 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan2(CAN_frame_t* p_frame)
         StandardMetrics.ms_v_pos_odometer->SetValue(d[1] << 16 | d[2] << 8 | d[3], m_odometer_units);
         }
       break;
+    case 0x35d:
+      //charge port open signal, have not found state signal use 0x390
+      //if (!StandardMetrics.ms_v_door_chargeport->AsBool())
+      //  {
+      //  StandardMetrics.ms_v_door_chargeport->SetValue(d[5] & 0x08);
+      //  }
+      break;
     case 0x60d:
       StandardMetrics.ms_v_door_trunk->SetValue(d[0] & 0x80);
       StandardMetrics.ms_v_door_rr->SetValue(d[0] & 0x40);
@@ -950,20 +1169,39 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan2(CAN_frame_t* p_frame)
        * Using "ready to drive" state to set ms_v_env_on seems sensible,
        * though maybe "on, not ready to drive" should also count.
        */
+       // The two lock bits are 0x10 driver door and 0x08 other doors.
+       // We should only say "locked" if both are locked.
+       // change to only check driver door, on AZE0 0x08 not always 1 when locked
+      if ((d[2] & 0x10) == 0x10)
+        {
+        StandardMetrics.ms_v_env_locked->SetValue(true);
+        vehicle_nissanleaf_car_on(false);
+        }
+      else
+        {
+        StandardMetrics.ms_v_env_locked->SetValue(false);
+        }
+
       switch ((d[1]>>1) & 3)
         {
         case 0: // off
-        case 1: // accessory
-        case 2: // on (not ready to drive)
           vehicle_nissanleaf_car_on(false);
           break;
-        case 3: // ready to drive
+        case 1: // accessory
+        case 2: // on (not ready to drive)
+          StandardMetrics.ms_v_env_awake->SetValue(true);
+          PollSetBus(m_can2);
+          if (m_enable_write) PollSetState(POLLSTATE_ON);
+          break;
+        case 3: // ready to drive, is triggered on unlock
+          StandardMetrics.ms_v_env_awake->SetValue(true);
+          if (StandardMetrics.ms_v_env_footbrake->AsFloat() > 0) //check footbrake to avoid false positive
+          {
           vehicle_nissanleaf_car_on(true);
+          }
           break;
         }
-      // The two lock bits are 0x10 driver door and 0x08 other doors.
-      // We should only say "locked" if both are locked.
-      StandardMetrics.ms_v_env_locked->SetValue( (d[2] & 0x18) == 0x18);
+
       break;
     }
   }
@@ -976,6 +1214,7 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan2(CAN_frame_t* p_frame)
 
 void OvmsVehicleNissanLeaf::SendCommand(RemoteCommand command)
   {
+  if (!m_enable_write) return; //disable commands unless canwrite is true
   unsigned char data[4];
   uint8_t length;
   canbus *tcuBus;
@@ -992,7 +1231,7 @@ void OvmsVehicleNissanLeaf::SendCommand(RemoteCommand command)
     length = 1;
     tcuBus = m_can1;
     }
-
+  CommandWakeup();
   switch (command)
     {
     case ENABLE_CLIMATE_CONTROL:
@@ -1024,14 +1263,14 @@ void OvmsVehicleNissanLeaf::SendCommand(RemoteCommand command)
       data[3] = 0x00;
       break;
     case UNLOCK_DOORS:
-      ESP_LOGI(TAG, "Unlook Doors");
+      ESP_LOGI(TAG, "Unlock Doors");
       data[0] = 0x11;
       data[1] = 0x00;
       data[2] = 0x00;
       data[3] = 0x00;
       break;
     case LOCK_DOORS:
-      ESP_LOGI(TAG, "Look Doors");
+      ESP_LOGI(TAG, "Lock Doors");
       data[0] = 0x60;
       data[1] = 0x80;
       data[2] = 0x00;
@@ -1091,18 +1330,6 @@ void OvmsVehicleNissanLeaf::CcDisableTimer()
  */
 void OvmsVehicleNissanLeaf::Ticker1(uint32_t ticker)
   {
-  // FIXME
-  // detecting that on is stale and therefor should turn off probably shouldn't
-  // be done like this
-  // perhaps there should be a car on-off state tracker and event generator in
-  // the core framework?
-  // perhaps interested code should be able to subscribe to "onChange" and
-  // "onStale" events for each metric?
-  if (StandardMetrics.ms_v_env_awake->IsStale())
-    {
-    StandardMetrics.ms_v_env_awake->SetValue(false);
-    }
-
   // Update any derived values
   // Energy used varies a lot during driving
   HandleEnergy();
@@ -1117,6 +1344,17 @@ void OvmsVehicleNissanLeaf::Ticker10(uint32_t ticker)
     // Range and Charging both mainly depend on SOC, which will change 1% in less than a minute when fast-charging.
     HandleRange();
     HandleCharging();
+    // FIXME
+    // detecting that on is stale and therefor should turn off probably shouldn't
+    // be done like this
+    // perhaps there should be a car on-off state tracker and event generator in
+    // the core framework?
+    // perhaps interested code should be able to subscribe to "onChange" and
+    // "onStale" events for each metric?
+    if (StandardMetrics.ms_v_env_awake->AsBool() && StandardMetrics.ms_v_env_awake->IsStale())
+      {
+      StandardMetrics.ms_v_env_awake->SetValue(false);
+      }
   }
 
 /**
@@ -1149,7 +1387,6 @@ void OvmsVehicleNissanLeaf::HandleCharging()
     {
     return;
     }
-
   // Check if we have what is needed to calculate energy and remaining minutes
   if (m_cum_energy_charge_wh > 0)
     {
@@ -1170,7 +1407,7 @@ void OvmsVehicleNissanLeaf::HandleCharging()
     StandardMetrics.ms_v_charge_duration_full->SetValue(minsremaining_full, Minutes);
     ESP_LOGV(TAG, "Time remaining: %d mins to full", minsremaining_full);
 
-    if (limit_soc > 0) 
+    if (limit_soc > 0)
       {
       // if limit_soc is set, then calculate remaining time to limit_soc
       int minsremaining_soc = calcMinutesRemaining(limit_soc, charge_power_w);
@@ -1179,7 +1416,7 @@ void OvmsVehicleNissanLeaf::HandleCharging()
       ESP_LOGV(TAG, "Time remaining: %d mins to %0.0f%% soc", minsremaining_soc, limit_soc);
       }
 
-    if (limit_range > 0 && max_range > 0.0)  
+    if (limit_range > 0 && max_range > 0.0)
       {
       // if range limit is set, then compute required soc and then calculate remaining time to that soc
       float range_soc           = limit_range / max_range * 100.0;
@@ -1290,11 +1527,8 @@ void OvmsVehicleNissanLeaf::HandleRange()
 // function sends that message even to Generation 1 cars which doesn't seem to
 // cause any problems.
 //
-
-OvmsVehicle::vehicle_command_t OvmsVehicleNissanLeaf::RemoteCommandHandler(RemoteCommand command)
+OvmsVehicle::vehicle_command_t OvmsVehicleNissanLeaf::CommandWakeup()
   {
-  ESP_LOGI(TAG, "RemoteCommandHandler");
-
   // Use GPIO to wake up GEN 1 Leaf with EV SYSTEM ACTIVATION REQUEST
   // TODO re-implement to support Gen 1 leaf
   //output_gpo3(TRUE);
@@ -1302,12 +1536,20 @@ OvmsVehicle::vehicle_command_t OvmsVehicleNissanLeaf::RemoteCommandHandler(Remot
   // The Gen 2 Wakeup frame works on some Gen1, and doesn't cause a problem
   // so we send it on all models. We have to take care to send it on the
   // correct can bus in newer cars.
+  if (!m_enable_write) return Fail; //disable commands unless canwrite is true
   ESP_LOGI(TAG, "Sending Gen 2 Wakeup Frame");
   int modelyear = MyConfig.GetParamValueInt("xnl", "modelyear", DEFAULT_MODEL_YEAR);
   canbus* tcuBus = modelyear >= 2016 ? m_can2 : m_can1;
   unsigned char data = 0;
   tcuBus->WriteStandard(0x68c, 1, &data);
+  return Success;
+  }
 
+OvmsVehicle::vehicle_command_t OvmsVehicleNissanLeaf::RemoteCommandHandler(RemoteCommand command)
+  {
+  if (!m_enable_write) return Fail; //disable commands unless canwrite is true
+  ESP_LOGI(TAG, "RemoteCommandHandler");
+  CommandWakeup();
   // The GEN 2 Nissan TCU module sends the command repeatedly, so we start
   // m_remoteCommandTimer (which calls RemoteCommandTimer()) to do this
   // EV SYSTEM ACTIVATION REQUEST is released in the timer too

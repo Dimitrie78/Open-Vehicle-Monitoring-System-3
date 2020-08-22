@@ -59,6 +59,7 @@ const char* SimcomState1Name(simcom::SimcomState1 state)
     case simcom::PoweringOff:    return "PoweringOff";
     case simcom::PoweredOff:     return "PoweredOff";
     case simcom::PowerOffOn:     return "PowerOffOn";
+    case simcom::Development:    return "Development";
     default:                     return "Undefined";
     };
   }
@@ -120,7 +121,8 @@ void simcom::Task()
               if (buffered_size>sizeof(data)) buffered_size = sizeof(data);
               int len = uart_read_bytes(m_uartnum, (uint8_t*)data, buffered_size, 100 / portTICK_RATE_MS);
               m_buffer.Push(data,len);
-              //MyCommandApp.HexDump(TAG, "rx", (const char*)data, len);
+              if (m_state1 == NetDeepSleep)
+                { MyCommandApp.HexDump(TAG, "rx", (const char*)data, len); }
               uart_get_buffered_data_len(m_uartnum, &buffered_size);
               SimcomState1 newstate = State1Activity();
               if ((newstate != m_state1)&&(newstate != None)) SetState1(newstate);
@@ -363,6 +365,9 @@ void simcom::SetPowerMode(PowerMode powermode)
     case Off:
       SetState1(PoweringOff);
       break;
+    case Devel:
+      SetState1(Development);
+      break;
     default:
       break;
     }
@@ -474,6 +479,8 @@ void simcom::State1Leave(SimcomState1 oldstate)
       break;
     case PoweredOff:
       break;
+    case Development:
+      break;
     default:
       break;
     }
@@ -584,6 +591,9 @@ void simcom::State1Enter(SimcomState1 newstate)
       m_state1_timeout_ticks = 3;
       m_state1_timeout_goto = PoweringOn;
       break;
+    case Development:
+      ESP_LOGI(TAG,"State: Enter Development state");
+      break;
     default:
       break;
     }
@@ -628,6 +638,21 @@ simcom::SimcomState1 simcom::State1Activity()
       // We shouldn't have any activity while powered off, so try again...
       return PoweringOff;
       break;
+    case Development:
+      if (m_mux.IsMuxUp())
+        {
+        m_mux.Process(&m_buffer);
+        }
+      else
+        {
+        size_t needed = m_buffer.UsedSpace();
+        char* result = new char[needed+1];
+        m_buffer.Pop(needed, (uint8_t*)result);
+        result[needed] = 0;
+        MyCommandApp.HexDump(TAG, "rx", result, needed);
+        delete [] result;
+        }
+      break;
     default:
       break;
     }
@@ -671,7 +696,7 @@ simcom::SimcomState1 simcom::State1Ticker1()
       switch (m_state1_ticker)
         {
         case 10:
-          tx("AT+CPIN?;+CREG=1;+CTZU=1;+CTZR=1;+CLIP=1;+CMGF=1;+CNMI=1,2,0,0,0;+CSDH=1;+CMEE=2;+CSQ;+AUTOCSQ=1,1;E0\r\n");
+          tx("AT+CPIN?;+CREG=1;+CTZU=1;+CTZR=1;+CLIP=1;+CMGF=1;+CNMI=1,2,0,0,0;+CSDH=1;+CMEE=2;+CSQ;+AUTOCSQ=1,1;E0;S0=0\r\n");
           break;
         case 12:
           tx("AT+CGMR;+ICCID\r\n");
@@ -783,6 +808,8 @@ simcom::SimcomState1 simcom::State1Ticker1()
     case PoweringOff:
       break;
     case PoweredOff:
+      break;
+    case Development:
       break;
     default:
       break;
@@ -913,7 +940,9 @@ void simcom::StandardLineHandler(int channel, OvmsBuffer* buf, std::string line)
     if (m_netreg != nreg)
       {
       m_netreg = nreg;
-      ESP_LOGI(TAG, "CREG Network Registration: %s",SimcomNetRegName(m_netreg));
+      const char *v = SimcomNetRegName(m_netreg);
+      StdMetrics.ms_m_net_mdm_netreg->SetValue(v);
+      ESP_LOGI(TAG, "CREG Network Registration: %s", v);
       }
     }
   else if (line.compare(0, 7, "+COPS: ") == 0)
@@ -1008,6 +1037,7 @@ void simcom::StandardLineHandler(int channel, OvmsBuffer* buf, std::string line)
 void simcom::PowerCycle()
   {
   ESP_LOGI(TAG, "Power Cycle");
+  uart_flush(m_uartnum); // Flush the ring buffer, to try to address MUX start issues
 #ifdef CONFIG_OVMS_COMP_MAX7317
   MyPeripherals->m_max7317->Output(MODEM_EGPIO_PWR, 0); // Modem EN/PWR line low
   MyPeripherals->m_max7317->Output(MODEM_EGPIO_PWR, 1); // Modem EN/PWR line high
@@ -1261,6 +1291,8 @@ void simcom_setstate(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int ar
     newstate = simcom::PoweredOff;
   else if (strcmp(statename,"PowerOffOn")==0)
     newstate = simcom::PowerOffOn;
+  else if (strcmp(statename,"Development")==0)
+    newstate = simcom::Development;
 
   if (newstate == simcom::None)
     {

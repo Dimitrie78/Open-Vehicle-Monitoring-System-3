@@ -78,7 +78,7 @@ The antenna is connected to the port marked GSM on the OVMS v3 module. The GPS p
 Antenna beside rear passenger headrest
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The antenna cable is long enough to reach back to the area around the left side seat head. This approach is generally easiest. The module is placed in the left seat footwell, near the diagnostic port connector. From there, the antenna cable is routed through the base of the waterfall, under the door sill, and up the side of the door frame. 
+The antenna cable is long enough to reach back to the area around the left side seat head. This approach is generally easiest. The module is placed in the left seat footwell, near the diagnostic port connector. From there, the antenna cable is routed through the base of the waterfall, under the door sill, and up the side of the door frame.
 
 The door sill is held in place by velcro and is easily removed. You may have to loosen the *waterfall* (held in place by four screws around the fuse box area). The antenna cable can then be placed on top of the metal of the chassis sill, between the velcro strips, and routed up through the existing plastic trunking. At this point, the door sill can then be put back in place.
 
@@ -103,7 +103,7 @@ The Tesla Roadster specific configuration options are in configuration parameter
 ==================== ======= ===========
 Instance             Default Description
 ==================== ======= ===========
-digital.speedo       no      Set to *yes* to enable digital speedometer
+digital.speedo       no      Set to *yes* to enable digital speedometer (2.x cars only)
 digital.speedo.reps  3       Number of CAN bus repeat transmissions
 cooldown.timelimit   60      Number of minutes after which cooldown is stopped
 cooldown.templimit   31      Temperature (in Celcius) after which cooldown is stopped
@@ -120,11 +120,24 @@ Tesla Roadster Notes
 #. OVMS v3 can calculate an overall battery health metric. This metric is calculated using our own algorithm and is in no way approved by Tesla. Battery health is dependent on many factors, and hard to bring down to just one simple number.
 #. The Tesla Roadster requires the ignition key to be on, and manual switches turned, to cool/heat the cabin. It is not technically possible to do this remotely via OVMS.
 
-The digital speedometer function replaces the AMPS display in the dashboard instrument cluster with the vehicle speed. This is an experimental feature, and works 99% of the time, but sometimes the car *wins* and displays AMPS for a split second. A better solution is to use the HUD functionality of OVMS v3 and install an external Heads Up Display in the car.
+The digital speedometer function replaces the AMPS display in the dashboard instrument cluster with the vehicle speed. It is only supported on v2.x cars (not v1.5). This is an experimental feature, and works 99% of the time, but sometimes the car *wins* and displays AMPS for a split second. A better solution is to use the HUD functionality of OVMS v3 and install an external Heads Up Display in the car.
+
+-----------
+TPMS Option
+-----------
+
+Reading and writing TPMS wheel sensor IDs from/to the Baolong TPMS ECU is supported in v2.x Tesla Roadsters using the optional OVMS K-Line Expansion Board. You will need a v3.2 module (or v3.1 module labelled on board as July 2018 or later, with K-line pin connected), and an OVT1 vehicle cable (clearly labelled with "OVT1" on the cable).
+
+The optional OVMS K-line Expansion Board should be configured with SW1 set to position #2 (LDO 5v), and S1 in to OFF position (away from the ON label).
+
+To read the current wheel sensor IDs from the Baolong TPMS ECU, ensure that the ignition switch is ON (so instrument panel lights are on), and issue the 'tpms read' command in OVMS.
+
+Similarly, to write wheel sensor IDs to the Baolong TPMS ECU, ensure that the ignition switch is ON (so instrument panel lights are on), and issue the 'tpms write' command in OVMS.
+
+Note that this functionality will not work with v1.5 Tesla Roadsters (that use a different TPMS ECU to the v2.x cars).
 
 ------
 Thanks
 ------
 
 There are so many people to thank for Tesla Roadster support in OVMS. W.Petefish for sourcing the car connector, Fuzzylogic for the original hardware and software design and demonstration of it working, Scott451 for figuring out many of the Roadster CAN bus messages, Tom Saxton for v1.5 Roadster testing, Michael Thwaite for pictures of antenna installation, Bennett Leeds for wordsmithing the manual, Mark Webb-Johnson for CAN bus hacking and writing the vehicle module support, Sonny Chen for beta testing and tuning, and many others for showing that this kind of thing can work in the real world.
-

@@ -46,6 +46,7 @@
 /**
  * DukContext: C++ wrapper for duk_context
  */
+
 class DukContext
   {
   public:
@@ -55,7 +56,10 @@ class DukContext
     void Push(bool val)                   { duk_push_boolean(m_ctx, val); }
     void Push(int val)                    { duk_push_number(m_ctx, val); }
     void Push(short val)                  { duk_push_number(m_ctx, val); }
-    void Push(float val)                  { duk_push_number(m_ctx, round(((double)val) * 1e6) / 1e6); }
+    void Push(long val)                   { duk_push_number(m_ctx, val); }
+    void Push(unsigned short val)         { duk_push_uint(m_ctx, val); }
+    void Push(unsigned long val)          { duk_push_uint(m_ctx, val); }
+    void Push(float val)                  { duk_push_number(m_ctx, float2double(val)); }
     void Push(double val)                 { duk_push_number(m_ctx, val); }
     void Push(const char* val)            { duk_push_string(m_ctx, val); }
     void Push(const std::string &val)     { duk_push_lstring(m_ctx, val.data(), val.size()); }

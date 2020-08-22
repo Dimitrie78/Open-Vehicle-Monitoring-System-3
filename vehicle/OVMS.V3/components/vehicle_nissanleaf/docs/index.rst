@@ -10,31 +10,62 @@ This vehicle type supports the Nissan Leaf and Nissan e-NV200.
 Support Overview
 ----------------
 
+^^^^^^^^^^^^^^^^
+Hardware
+^^^^^^^^^^^^^^^^
+
 =========================== ==============
-Function                    Support Status
+Item                        Support Status
 =========================== ==============
-Hardware                    Any OVMS v3 (or later) module. Vehicle support: 2011-2017 (24kWh & 30kWh & custom battery)
+Module                      Any OVMS v3 (or later) module. Vehicle support: 2011-2017 (24kWh & 30kWh & custom battery)
 Vehicle Cable               1779000 Nissan Leaf OBD-II to DB9 Data Cable for OVMS
 GSM Antenna                 1000500 Open Vehicles OVMS GSM Antenna (or any compatible antenna)
 GPS Antenna                 1020200 Universal GPS Antenna (SMA Connector) (or any compatible antenna)
-SOC Display                 Yes (by default based on GIDS)
-Range Display               Yes (by default based on GIDS)
-GPS Location                Yes (from modem module GPS)
-Speed Display               Yes (from vehicle speed PID)
-Temperature Display         Yes (from vehicle temperature PIDs)
-BMS v+t Display             Yes
-TPMS Display                Yes (If hardware available)
-Charge Status Display       Yes
-Charge Interruption Alerts  Yes
-Charge Control              Start charge only (Stop charge in beta firmware stage)
-Cabin Pre-heat/cool Control Yes* (see info below)
-Lock/Unlock Vehicle         Not currently supported
-Valet Mode Control          Not currently supported
-Others
 =========================== ==============
 
-OVMS currently supports 2011-2017 Nissan LEAF and Nissan e-NV200
+^^^^^^^^^^^^^^^^
+Controls
+^^^^^^^^^^^^^^^^
 
+=========================== ==============
+Function                    Support Status
+=========================== ==============
+Charge Control              Start charge only (Stop charge in beta firmware stage)
+Cabin Pre-heat/cool Control Yes [1]_ (see info below)
+Lock/Unlock Vehicle         Yes [3]_ (see info below)
+Valet Mode Control          Not currently supported
+=========================== ==============
+
+^^^^^^^^^^^^^^^^
+Metrics
+^^^^^^^^^^^^^^^^
+
+=========================== ==============
+Item                        Support Status
+=========================== ==============
+SOC                         Yes (by default based on GIDS)
+Range                       Yes (by default based on GIDS)
+GPS Location                Yes (from modem module GPS)
+Speed                       Yes (from vehicle speed PID)
+Cabin Temperature           Yes (from vehicle temperature PIDs)
+Ambient Temperature         Yes (from vehicle temperature PIDs)
+SetPoint Temperature        Yes (from vehicle hvac PIDs) [2]_
+HVAC Fan Speed              Yes (from vehicle hvac PIDs) [2]_
+HVAC Heating/Cooling Status Yes (from vehicle hvac PIDs) [2]_
+HVAC On Status              Yes (from vehicle hvac PIDs) [2]_
+HVAC Temperature Setpoint   Yes (from vehicle hvac PIDs) [2]_
+HVAC Ventilation Mode       Yes (from vehicle hvac PIDs) [2]_
+BMS v+t                     Yes
+TPMS                        Yes (If hardware available)
+Charge Status               Yes
+Charge Interruption Alerts  Yes
+=========================== ==============
+
+.. [1] OVMS currently supports 2011-2017 Nissan LEAF and Nissan e-NV200
+
+.. [2] Some HVAC Status Items have been only verified with 2013-2016 MY cars and will only work if the year is set in configuraiton. Also HVAC needs to be in ON position before powering down the vehicle for the metrics to work during pre-heat.
+
+.. [3] Lock/Unlock will work if CAR can bus is awake, this can be activated by turning on A/C
 ----------------------
 Remote Climate Control
 ----------------------
@@ -56,13 +87,13 @@ Note: Unplugging the TCU will disable Nissan EV connect / CARWINGS features e.g 
 OVMS remote climate support will 'just work' on LEAF Visia models and Visia/Acenta e-NV200 since these models do not have a TCU fitted.
 
 Note: If you prefer not to unplug the Nissan TCU, all OVMS functions appart from remote climate will function just fine alongside the Nissan TCU.
- 
+
 
 ^^^^^^^^^^^^^^^^^^^^^^^
 2016-2017 models (AZE0)
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-**Remote climate control may not work on 2016-2017 cars.** This is because in 2016 Nissan moved the TCU from the EV CAN bus to the CAR CAN bus.
+**Remote climate control will only work when plugged in and actively charging on 2016-2017 models.** This is because in 2016 Nissan moved the TCU from the EV CAN bus to the CAR CAN bus.
 
 Set the model year as follows and if necessary configure 30 kWh model:
 
@@ -113,7 +144,8 @@ The OVMS uses two configuration options to calculate remaining range, whPerGid (
 Resources
 -----------------
 
-- Nissan LEAF supported added by Tom Parker, see `his wiki <https://carrott.org/emini/Nissan_Leaf_OVMS>`_ for lots of documentation and resources. Some info is outdated e.g climate control now turns off automatically.
+- Nissan LEAF support added by Tom Parker, see `his wiki <https://carrott.org/emini/Nissan_Leaf_OVMS>`_ for lots of documentation and resources. Some info is outdated e.g climate control now turns off automatically.
+- Nissan LEAF features are being added by Jaunius Kapkan, see `his github profile <https://github.com/mjkapkan/Open-Vehicle-Monitoring-System-3>`_ to track the progress.
 - `MyNissanLEAF thread for Nissan CANbus decoding discussion <http://www.mynissanleaf.com/viewtopic.php?f=44&t=4131&hilit=open+CAN+discussion&start=440>`_
 - Database files (.DBC) for ZE0 and AZE0 Leaf can be found here: `Github LEAF Canbus database files <https://github.com/dalathegreat/leaf_can_bus_messages>`_
 

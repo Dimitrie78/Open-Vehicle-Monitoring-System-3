@@ -725,7 +725,7 @@ static void module_tasks(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, in
   {
   OvmsMutexLock lock(&taskstatus_mutex);
   UBaseType_t num = uxTaskGetNumberOfTasks();
-  writer->printf("Number of Tasks =%3u%s    Stack:  Now   Max Total    Heap 32-bit SPIRAM C# PRI CPU%%\n", num,
+  writer->printf("Number of Tasks =%3u%s    Stack:  Now   Max Total    Heap 32-bit SPIRAM C# PRI CPU%% BPR/MH\n", num,
     num > MAX_TASKS ? ">max" : "    ");
   if (!allocate())
     {
@@ -773,11 +773,12 @@ static void module_tasks(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, in
         uint32_t used = total - ((uint32_t)taskstatus[i].pxStackBase & 0xFFFF);
         int core = xTaskGetAffinity(taskstatus[i].xHandle);
         uint32_t runtime = taskstatus[i].ulRunTimeCounter - last_runtime[taskstatus[i].xTaskNumber];
-        writer->printf("%08X %4u %s %-15s %5u %5u %5u %7u%7u%7u  %c %3d %3.0f%%\n", taskstatus[i].xHandle,
+        writer->printf("%08X %4u %s %-15s %5u %5u %5u %7u%7u%7u  %c %3d %3.0f%% %3d/%2d\n", taskstatus[i].xHandle,
           taskstatus[i].xTaskNumber, states[taskstatus[i].eCurrentState], taskstatus[i].pcTaskName,
           used, total - taskstatus[i].usStackHighWaterMark, total, heaptotal, heap32bit, heapspi,
           (core == tskNO_AFFINITY) ? '*' : '0'+core, taskstatus[i].uxCurrentPriority,
-          diff_totalruntime ? ((float) runtime / diff_totalruntime * 100) : 0.0f);
+          diff_totalruntime ? ((float) runtime / diff_totalruntime * 100) : 0.0f,
+          taskstatus[i].uxBasePriority, taskstatus[i].uxMutexesHeld);
         if (showStack)
           {
           uint32_t* stack = (uint32_t*)(pxTaskGetStackStart(taskstatus[i].xHandle) + total);
@@ -894,6 +895,17 @@ static void module_fault(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, in
   {
   ESP_LOGI(TAG,"Abort faulting module (on command)");
   abort();
+  }
+
+static void module_trigger_twdt(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv)
+  {
+  ESP_LOGI(TAG,"Triggering task watchdog (on command)");
+  // trigger twdt on event task by blocking all events:
+  static auto covid19 = [](std::string event, void* data) { vTaskDelay(portMAX_DELAY); };
+  MyEvents.RegisterEvent(TAG, "ticker.1", covid19);
+  writer->puts(
+    "Task watchdog will be triggered in " STR(CONFIG_TASK_WDT_TIMEOUT_S) " seconds.\n"
+    "Note: important events will cause reset as soon as queue is full.");
   }
 
 static void module_reset(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv)
@@ -1052,6 +1064,8 @@ class OvmsModuleInit
     cmd_tasks->RegisterCommand("stack","Show module task usage with stack",module_tasks);
     cmd_tasks->RegisterCommand("data","Output module task stats record",module_tasks_data);
     cmd_module->RegisterCommand("fault","Abort fault the module",module_fault);
+    OvmsCommand* cmd_trigger = cmd_module->RegisterCommand("trigger","Trigger framework");
+    cmd_trigger->RegisterCommand("twdt","Trigger task watchdog timeout",module_trigger_twdt);
     cmd_module->RegisterCommand("reset","Reset module",module_reset);
     cmd_module->RegisterCommand("check","Check heap integrity",module_check);
     cmd_module->RegisterCommand("summary","Show module summary",module_summary);

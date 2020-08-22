@@ -34,6 +34,7 @@
 #include <string>
 
 #include "rom/rtc.h"
+#include "rom/crc.h"
 #include "esp_system.h"
 #include "ovms_events.h"
 #include "ovms_mutex.h"
@@ -62,6 +63,11 @@ typedef struct
 
 typedef struct
   {
+  // data consistency:
+  uint32_t crc;
+  uint32_t calc_crc() { return crc32_le(0, (uint8_t*)this+sizeof(crc), sizeof(*this)-sizeof(crc)); }
+
+  // payload:
   unsigned int boot_count;          // Number of times system has rebooted (not power on)
   RESET_REASON bootreason_cpu0;     // Reason for last boot on CPU#0
   RESET_REASON bootreason_cpu1;     // Reason for last boot on CPU#1
@@ -72,6 +78,10 @@ typedef struct
   unsigned int crash_count_total;   // Total number of times system has crashed since power on
   crash_data_t crash_data;          // Register dump & backtrace info
   esp_reset_reason_t reset_hint;    // Copy of RTC_RESET_CAUSE_REG
+  char curr_event_name[32];         // Copy of MyEvents.m_current_event
+  char curr_event_handler[16];      // … MyEvents.m_current_callback->m_caller
+  uint16_t curr_event_runtime;      // … monotonictime-MyEvents.m_current_started
+  char wdt_tasknames[32];           // Pipe (|) separated list of the tasks that triggered the TWDT
   } boot_data_t;
 
 extern boot_data_t boot_data;
@@ -93,8 +103,8 @@ class Boot
     void SetStable();
 
   public:
-    void SetSoftReset() { boot_data.soft_reset = true; }
-    void SetFirmwareUpdate() { boot_data.soft_reset = false; boot_data.firmware_update = true; }
+    void SetSoftReset();
+    void SetFirmwareUpdate();
     void Restart(bool hard=false);
     void RestartPending(const char* tag);
     void RestartReady(const char* tag);

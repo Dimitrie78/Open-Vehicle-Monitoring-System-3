@@ -290,6 +290,7 @@ class OvmsVehicleRenaultTwizy : public OvmsVehicle
     #define SEND_ResetResult            (1<< 7)  // info/alert: RESET OK/FAIL
     #define SEND_SuffCharge             (1<< 8)  // info: sufficient SOC/range reached
     #define SEND_SDOLog                 (1<< 9)  // data: RT-ENG-SDO history entry
+    #define SEND_BMSAlert               (1<< 10) // alert: BMS error / temperature
     
   protected:
     unsigned int twizy_notifications = 0;
@@ -393,6 +394,21 @@ class OvmsVehicleRenaultTwizy : public OvmsVehicle
     //OvmsMetricFloat *m_batt_max_drive_pwr;
     //OvmsMetricFloat *m_batt_max_recup_pwr;
 
+    #define BMS_TYPE_VBMS             0                     // VirtualBMS
+    #define BMS_TYPE_EDRV             1                     // eDriver BMS
+    #define BMS_TYPE_ORIG             7                     // Standard Renault/LG BMS
+    int                               twizy_bms_type;       // Internal copy of *m_bms_type
+    OvmsMetricInt                     *m_bms_type;          // 0x700[1] bits 5-7
+    OvmsMetricInt                     *m_bms_state1;        // 0x700[0]
+    OvmsMetricInt                     *m_bms_state2;        // 0x700[7]
+    OvmsMetricInt                     *m_bms_error;         // 0x700[1] bits 0-4
+    OvmsMetricBitset<16>              *m_bms_balancing;     // 0x700[5,6]
+    std::bitset<16>                   bms_been_balancing;   // collecting balancer bits for notification/log
+    OvmsMetricVector<long>            *m_bms_balancetime;   // balancing time in 0x700 frame counts
+    std::vector<long>                 bms_balance_time;
+    OvmsMetricFloat                   *m_bms_temp;          // internal BMS temperature
+    #define BMS_TEMP_ALERT            85                    // alert threshold
+    
     battery_pack twizy_batt[BATT_PACKS];
     battery_cmod twizy_cmod[BATT_CMODS];
     battery_cell twizy_cell[BATT_CELLS];
@@ -416,7 +432,7 @@ class OvmsVehicleRenaultTwizy : public OvmsVehicle
     #define BATT_SENSORS_READY    ((batt_cell_count==14) ? 63 : 127)  // value: group complete
     SemaphoreHandle_t m_batt_sensors = 0;
     bool m_batt_doreset = false;
-  
+    
   
   // --------------------------------------------------------------------------
   // Charge control subsystem

@@ -47,6 +47,7 @@ static const char *TAG = "script";
 #include "console_async.h"
 #include "buffered_shell.h"
 #include "ovms_netmanager.h"
+#include "ovms_tls.h"
 
 OvmsScripts MyScripts __attribute__ ((init_priority (1600)));
 
@@ -215,7 +216,6 @@ static duk_ret_t duk__handle_require(duk_context *ctx)
 		duk_int_t ret;
 
 		/* [ ... module source ] */
-
 		ret = duk_safe_call(ctx, duk__eval_module_source, NULL, 2, 1);
 		if (ret != DUK_EXEC_SUCCESS)
       {
@@ -515,8 +515,9 @@ static duk_ret_t DukOvmsLoadModule(duk_context *ctx)
       }
     else
       {
-      ESP_LOGD(TAG,"load_cb: id:'%s' (internally provided %d bytes)", module_id, mod->length);
+      ESP_LOGD(TAG,"load_cb: id:'%s' internally provided %s (%d bytes)", module_id, filename, mod->length);
       duk_push_lstring(ctx, mod->start, mod->length);
+      MyCommandApp.NotifyDuktapeModuleLoad(filename);
       return 1;
       }
     }
@@ -548,6 +549,8 @@ static duk_ret_t DukOvmsLoadModule(duk_context *ctx)
     duk_push_string(ctx, script);
     delete [] script;
     fclose(sf);
+    ESP_LOGD(TAG,"load_cb: id:'%s' vfs provided %s (%lu bytes)", module_id, filename, slen);
+    MyCommandApp.NotifyDuktapeModuleLoad(filename);
     }
 
   return 1;
@@ -612,27 +615,6 @@ static duk_ret_t DukOvmsAssert(duk_context *ctx)
     }
   duk_error(ctx, DUK_ERR_ERROR, "assertion failed: %s", duk_safe_to_string(ctx, 1));
   return 0;
-  }
-
-static duk_ret_t DukOvmsCommand(duk_context *ctx)
-  {
-  const char *cmd = duk_to_string(ctx,0);
-
-  if (cmd != NULL)
-    {
-    BufferedShell* bs = new BufferedShell(false, COMMAND_RESULT_NORMAL);
-    bs->SetSecure(true); // this is an authorized channel
-    bs->ProcessChars(cmd, strlen(cmd));
-    bs->ProcessChar('\n');
-    std::string val; bs->Dump(val);
-    delete bs;
-    duk_push_string(ctx, val.c_str());
-    return 1;  /* one return value */
-    }
-  else
-    {
-    return 0;
-    }
   }
 
 static duk_ret_t DukOvmsRaiseEvent(duk_context *ctx)
@@ -1095,7 +1077,10 @@ duk_ret_t DuktapeObject::CallMethod(duk_context *ctx, const char* method, void* 
   int entry_top = duk_get_top(ctx);
   Push(ctx);
   duk_push_string(ctx, method);
-  duk_call_prop(ctx, -2, 0);
+  if (duk_pcall_prop(ctx, -2, 0) != 0)
+    {
+    DukOvmsErrorHandler(ctx, -1);
+    }
   // discard return values if any + this:
   duk_pop_n(ctx, duk_get_top(ctx) - entry_top);
   return 0;
@@ -1137,7 +1122,7 @@ DuktapeHTTPRequest::DuktapeHTTPRequest(duk_context *ctx, int obj_idx)
   // …request headers:
   extram::string key, val;
   bool have_useragent = false, have_contenttype = false;
-  
+
   duk_get_prop_string(ctx, 0, "headers");
   if (duk_is_array(ctx, -1))
     {
@@ -1172,7 +1157,7 @@ DuktapeHTTPRequest::DuktapeHTTPRequest(duk_context *ctx, int obj_idx)
       }
     }
   duk_pop(ctx); // [array]
-  
+
   // add defaults:
   if (!have_useragent)
     {
@@ -1216,7 +1201,7 @@ bool DuktapeHTTPRequest::StartRequest(duk_context *ctx /*=NULL*/)
   if (startsWith(m_url, "https://"))
     {
     #if MG_ENABLE_SSL
-      opts.ssl_ca_cert = "*";
+      opts.ssl_ca_cert = MyOvmsTLS.GetTrustedList();
     #else
       m_error = "SSL support disabled";
       ESP_LOGD(TAG, "DuktapeHTTPRequest: connect to '%s' failed: %s", m_url.c_str(), m_error.c_str());
@@ -1483,7 +1468,10 @@ duk_ret_t DuktapeHTTPRequest::CallMethod(duk_context *ctx, const char* method, v
     if (callable)
       {
       ESP_LOGD(TAG, "DuktapeHTTPRequest: calling method '%s' nargs=%d", method, nargs);
-      duk_call_prop(ctx, obj_idx, nargs);
+      if (duk_pcall_prop(ctx, obj_idx, nargs) != 0)
+        {
+        DukOvmsErrorHandler(ctx, -1);
+        }
       }
 
     // clear stack:
@@ -1501,17 +1489,17 @@ duk_ret_t DuktapeHTTPRequest::CallMethod(duk_context *ctx, const char* method, v
 
 /***************************************************************************************************
  * DuktapeVFSLoad: load a file asynchronously
- * 
+ *
  * This is following a high-level approach, limitation is the file contents needs to fit in RAM
  * twice, as the read buffer is converted into a JS string/buffer.
  * Partial loading / block operations may be added later as needed, e.g. based on arguments.
- * 
+ *
  * Notes:
  * - Conditional synchronous operation doesn't make sense; async overhead is minimal
  *   and the stat() on "/sd" already needs at least 45 ms.
  * - On /store a Load() takes ~ 25 ms base +  5 ms per KB.
  * - On /sd    a Load() takes ~ 60 ms base + 30 ms per KB.
- * 
+ *
  * Javascript API:
  *   var request = VFS.Load({
  *     path: "…",
@@ -1733,7 +1721,10 @@ duk_ret_t DuktapeVFSLoad::CallMethod(duk_context *ctx, const char* method, void*
     if (callable)
       {
       //ESP_LOGD(TAG, "DuktapeVFSLoad: calling method '%s' nargs=%d", method, nargs);
-      duk_call_prop(ctx, obj_idx, nargs);
+      if (duk_pcall_prop(ctx, obj_idx, nargs) != 0)
+        {
+        DukOvmsErrorHandler(ctx, -1);
+        }
       }
 
     // clear stack:
@@ -1751,11 +1742,11 @@ duk_ret_t DuktapeVFSLoad::CallMethod(duk_context *ctx, const char* method, void*
 
 /***************************************************************************************************
  * DuktapeVFSSave: save a file asynchronously
- * 
+ *
  * This is following a high-level approach, limitation is the file contents needs to fit in RAM
  * twice, as the JS buffer is copied for the saver.
  * Partial saving / block operations may be added later as needed, e.g. based on arguments.
- * 
+ *
  * Javascript API:
  *   var request = VFS.Save({
  *     data: string|u8buf
@@ -1975,7 +1966,10 @@ duk_ret_t DuktapeVFSSave::CallMethod(duk_context *ctx, const char* method, void*
     if (callable)
       {
       //ESP_LOGD(TAG, "DuktapeVFSSave: calling method '%s' nargs=%d", method, nargs);
-      duk_call_prop(ctx, obj_idx, nargs);
+      if (duk_pcall_prop(ctx, obj_idx, nargs) != 0)
+        {
+        DukOvmsErrorHandler(ctx, -1);
+        }
       }
 
     // clear stack:
@@ -2204,7 +2198,9 @@ void OvmsScripts::DukTapeInit()
     delete [] script;
     fclose(sf);
     ESP_LOGI(TAG,"Duktape: Executing ovmsmain.js");
+    MyCommandApp.NotifyDuktapeModuleLoad("ovmsmain.js");
     duk_module_node_peval_main(m_dukctx, "ovmsmain.js");
+    MyCommandApp.NotifyDuktapeModuleUnload("ovmsmain.js");
     }
   }
 
@@ -2217,7 +2213,7 @@ void OvmsScripts::DukTapeTask()
 
   while(1)
     {
-    if (xQueueReceive(m_duktaskqueue, &msg, (portTickType)portMAX_DELAY)==pdTRUE)
+    if (xQueueReceive(m_duktaskqueue, &msg, pdMS_TO_TICKS(5000))==pdTRUE)
       {
       esp_task_wdt_reset(); // Reset WATCHDOG timer for this task
       duktapewriter = msg.writer;
@@ -2226,6 +2222,7 @@ void OvmsScripts::DukTapeTask()
         case DUKTAPE_reload:
           {
           // Reload DUKTAPE engine
+          MyCommandApp.NotifyDuktapeModuleUnloadAll();
           if (m_dukctx != NULL)
             {
             ESP_LOGI(TAG,"Duktape: Clearing existing context");
@@ -2240,7 +2237,7 @@ void OvmsScripts::DukTapeTask()
           // Compact DUKTAPE memory
           if (m_dukctx != NULL)
             {
-            ESP_LOGI(TAG,"Duktape: Compacting DukTape memory");
+            ESP_LOGD(TAG,"Duktape: Compacting DukTape memory");
             duk_gc(m_dukctx, 0);
             duk_gc(m_dukctx, 0);
             }
@@ -2384,7 +2381,7 @@ static void script_compact(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, 
 
 #endif // #ifdef CONFIG_OVMS_SC_JAVASCRIPT_DUKTAPE
 
-static void script_ovms(bool print, int verbosity, OvmsWriter* writer,
+static void script_ovms(int verbosity, OvmsWriter* writer,
   const char* spath, FILE* sf, bool secure=false)
   {
   char *ext = rindex(spath, '.');
@@ -2398,7 +2395,9 @@ static void script_ovms(bool print, int verbosity, OvmsWriter* writer,
     char *script = new char[slen+1];
     memset(script,0,slen+1);
     fread(script,1,slen,sf);
+    MyCommandApp.NotifyDuktapeModuleLoad(spath);
     MyScripts.DuktapeEvalNoResult(script, writer, spath);
+    MyCommandApp.NotifyDuktapeModuleUnload(spath);
     delete [] script;
 #else // #ifdef CONFIG_OVMS_SC_JAVASCRIPT_DUKTAPE
     if (writer)
@@ -2415,7 +2414,7 @@ static void script_ovms(bool print, int verbosity, OvmsWriter* writer,
   else
     {
     // Default: OVMS command script
-    BufferedShell* bs = new BufferedShell(print, verbosity);
+    BufferedShell* bs = new BufferedShell(false, verbosity);
     if (secure) bs->SetSecure(true);
     char* cmdline = new char[_COMMAND_LINE_LEN];
     while(fgets(cmdline, _COMMAND_LINE_LEN, sf) != NULL )
@@ -2468,8 +2467,7 @@ static void script_run(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int 
     writer->puts("Error: Script not found");
     return;
     }
-  script_ovms(verbosity != COMMAND_RESULT_MINIMAL, verbosity, writer,
-    path.c_str(), sf, writer->IsSecure());
+  script_ovms(verbosity, writer, path.c_str(), sf, writer->IsSecure());
   }
 
 void OvmsScripts::AllScripts(std::string path)
@@ -2500,7 +2498,7 @@ void OvmsScripts::AllScripts(std::string path)
     if (sf)
       {
       ESP_LOGI(TAG, "Running script %s", fpath.c_str());
-      script_ovms(false, COMMAND_RESULT_MINIMAL, NULL, fpath.c_str(), sf, true);
+      script_ovms(COMMAND_RESULT_MINIMAL, NULL, fpath.c_str(), sf, true);
       // script_ovms() closes sf
       }
     }
@@ -2544,9 +2542,11 @@ void OvmsScripts::EventScript(std::string event, void* data)
 OvmsScripts::OvmsScripts()
   {
   ESP_LOGI(TAG, "Initialising SCRIPTS (1600)");
+#ifdef CONFIG_OVMS_SC_JAVASCRIPT_DUKTAPE
   m_dukctx = NULL;
   m_duktaskid = NULL;
   m_duktaskqueue = NULL;
+#endif // CONFIG_OVMS_SC_JAVASCRIPT_DUKTAPE
 
 #ifdef CONFIG_OVMS_SC_JAVASCRIPT_NONE
   ESP_LOGI(TAG, "No javascript engines enabled (command scripting only)");
@@ -2565,11 +2565,9 @@ OvmsScripts::OvmsScripts()
   RegisterDuktapeModule(mod_json_js_start, mod_json_js_end - mod_json_js_start, "JSON");
 
   // Register standard functions
+  DuktapeObjectRegistration* dto;
   RegisterDuktapeFunction(DukOvmsPrint, 1, "print");
   RegisterDuktapeFunction(DukOvmsAssert, 2, "assert");
-  DuktapeObjectRegistration* dto = new DuktapeObjectRegistration("OvmsCommand");
-  dto->RegisterDuktapeFunction(DukOvmsCommand, 1, "Exec");
-  RegisterDuktapeObject(dto);
   dto = new DuktapeObjectRegistration("OvmsEvents");
   dto->RegisterDuktapeFunction(DukOvmsRaiseEvent, 2, "Raise");
   RegisterDuktapeObject(dto);
@@ -2590,6 +2588,9 @@ OvmsScripts::OvmsScripts()
   dt_vfs->RegisterDuktapeFunction(DuktapeVFSLoad::Create, 1, "Load");
   dt_vfs->RegisterDuktapeFunction(DuktapeVFSSave::Create, 1, "Save");
   RegisterDuktapeObject(dt_vfs);
+
+  // Notify the command system that scripts are ready
+  MyCommandApp.NotifyDuktapeScriptsReady();
 
   // Start the DukTape task...
   m_duktaskqueue = xQueueCreate(CONFIG_OVMS_SC_JAVASCRIPT_DUKTAPE_QUEUE_SIZE,sizeof(duktape_queue_t));

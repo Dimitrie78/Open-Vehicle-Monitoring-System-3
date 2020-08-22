@@ -37,6 +37,7 @@ static const char *TAG = "boot";
 #include "soc/rtc_cntl_reg.h"
 #include "esp_system.h"
 #include "esp_panic.h"
+#include "esp_task_wdt.h"
 
 #include "ovms.h"
 #include "ovms_boot.h"
@@ -175,8 +176,24 @@ void boot_status(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, 
     writer->printf("  Backtrace:\n ");
     for (int i=0; i<OVMS_BT_LEVELS && boot_data.crash_data.bt[i].pc; i++)
       writer->printf(" 0x%08lx", boot_data.crash_data.bt[i].pc);
+    if (boot_data.curr_event_name[0])
+      {
+      writer->printf("\n  Event: %s@%s %u secs", boot_data.curr_event_name, boot_data.curr_event_handler,
+        boot_data.curr_event_runtime);
+      }
+    if (MyBoot.GetResetReason() == ESP_RST_TASK_WDT)
+      {
+      writer->printf("\n  WDT tasks: %s", boot_data.wdt_tasknames);
+      }
     writer->printf("\n  Version: %s\n", StdMetrics.ms_m_version->AsString("").c_str());
     }
+  }
+
+void boot_clear(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv)
+  {
+  memset(&boot_data,0,sizeof(boot_data_t));
+  boot_data.crc = boot_data.calc_crc();
+  writer->puts("Boot status data has been cleared.");
   }
 
 Boot::Boot()
@@ -196,6 +213,12 @@ Boot::Boot()
     memset(&boot_data,0,sizeof(boot_data_t));
     m_bootreason = BR_PowerOn;
     ESP_LOGI(TAG, "Power cycle reset detected");
+    }
+  else if (boot_data.crc != boot_data.calc_crc())
+    {
+    memset(&boot_data,0,sizeof(boot_data_t));
+    m_bootreason = BR_PowerOn;
+    ESP_LOGW(TAG, "Boot data corruption detected, data cleared");
     }
   else
     {
@@ -244,12 +267,15 @@ Boot::Boot()
   boot_data.firmware_update = false;
   boot_data.stable_reached = false;
 
+  boot_data.crc = boot_data.calc_crc();
+
   // install error handler:
   xt_set_error_handler_callback(ErrorCallback);
 
   // Register our commands
   OvmsCommand* cmd_boot = MyCommandApp.RegisterCommand("boot","BOOT framework",boot_status, "", 0, 0, false);
   cmd_boot->RegisterCommand("status","Show boot system status",boot_status,"", 0, 0, false);
+  cmd_boot->RegisterCommand("clear","Clear/reset boot system status",boot_clear,"", 0, 0, false);
   }
 
 Boot::~Boot()
@@ -260,6 +286,20 @@ void Boot::SetStable()
   {
   boot_data.stable_reached = true;
   boot_data.crash_count_early = 0;
+  boot_data.crc = boot_data.calc_crc();
+  }
+
+void Boot::SetSoftReset()
+  {
+  boot_data.soft_reset = true;
+  boot_data.crc = boot_data.calc_crc();
+  }
+
+void Boot::SetFirmwareUpdate()
+  {
+  boot_data.soft_reset = false;
+  boot_data.firmware_update = true;
+  boot_data.crc = boot_data.calc_crc();
   }
 
 const char* Boot::GetBootReasonName()
@@ -378,6 +418,28 @@ void Boot::ErrorCallback(XtExcFrame *frame, int core_id, bool is_abort)
     }
   while (i < OVMS_BT_LEVELS)
     boot_data.crash_data.bt[i++].pc = 0;
+
+  // Save Event debug info:
+  if (!MyEvents.m_current_event.empty())
+    {
+    strlcpy(boot_data.curr_event_name, MyEvents.m_current_event.c_str(), sizeof(boot_data.curr_event_name));
+    if (MyEvents.m_current_callback)
+      strlcpy(boot_data.curr_event_handler, MyEvents.m_current_callback->m_caller.c_str(), sizeof(boot_data.curr_event_handler));
+    else
+      strlcpy(boot_data.curr_event_handler, "EventScript", sizeof(boot_data.curr_event_handler));
+    boot_data.curr_event_runtime = monotonictime - MyEvents.m_current_started;
+    }
+  else
+    {
+    boot_data.curr_event_name[0] = 0;
+    boot_data.curr_event_handler[0] = 0;
+    boot_data.curr_event_runtime = 0;
+    }
+
+  // Save TWDT task info:
+  esp_task_wdt_get_trigger_tasknames(boot_data.wdt_tasknames, sizeof(boot_data.wdt_tasknames));
+
+  boot_data.crc = boot_data.calc_crc();
   }
 
 void Boot::NotifyDebugCrash()
@@ -390,6 +452,8 @@ void Boot::NotifyDebugCrash()
     //  ,<bootcount>,<bootreason_name>,<bootreason_cpu0>,<bootreason_cpu1>
     //  ,<crashcnt>,<earlycrashcnt>,<crashtype>,<crashcore>,<registers>,<backtrace>
     //  ,<resetreason>,<resetreason_name>
+    //  ,<curr_event_name>,<curr_event_handler>,<curr_event_runtime>
+    //  ,<wdt_tasknames>
 
     StringWriter buf;
     buf.reserve(1024);
@@ -420,6 +484,12 @@ void Boot::NotifyDebugCrash()
 
     // Reset reason:
     buf.printf(",%d,%s", GetResetReason(), GetResetReasonName());
+
+    // Event debug info:
+    buf.printf(",%s,%s,%u", boot_data.curr_event_name, boot_data.curr_event_handler, boot_data.curr_event_runtime);
+
+    // TWDT debug info:
+    buf.printf(",%s", boot_data.wdt_tasknames);
 
     MyNotify.NotifyString("data", "debug.crash", buf.c_str());
     }

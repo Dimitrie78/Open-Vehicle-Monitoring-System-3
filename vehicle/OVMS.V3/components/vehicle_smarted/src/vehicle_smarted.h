@@ -41,6 +41,8 @@
 #include "ovms_config.h"
 #include "ovms_metrics.h"
 #include "ovms_command.h"
+#include "ovms_mutex.h"
+#include "ovms_semaphore.h"
 #ifdef CONFIG_OVMS_COMP_WEBSERVER
 #include "ovms_webserver.h"
 #endif
@@ -68,7 +70,8 @@ class OvmsVehicleSmartED : public OvmsVehicle
     static void WebCfgBattery(PageEntry_t& p, PageContext_t& c);
     static void WebCfgCommands(PageEntry_t& p, PageContext_t& c);
     static void WebCfgNotify(PageEntry_t& p, PageContext_t& c);
-    static void BmsCellMonitor(PageEntry_t& p, PageContext_t& c);
+    static void WebCfgBmsCellMonitor(PageEntry_t& p, PageContext_t& c);
+    static void WebCfgBmsCellCapacity(PageEntry_t& p, PageContext_t& c);
     static void WebCfgEco(PageEntry_t& p, PageContext_t& c);
     void ConfigChanged(OvmsConfigParam* param);
     bool SetFeature(int key, const char* value);
@@ -103,10 +106,13 @@ class OvmsVehicleSmartED : public OvmsVehicle
     virtual void Ticker10(uint32_t ticker);
     virtual void Ticker60(uint32_t ticker);
     void GetDashboardConfig(DashboardConfig& cfg);
+    virtual void CalculateEfficiency();
     void vehicle_smarted_car_on(bool isOn);    
     void NotifyTrip();
     void NotifyValetEnabled();
     void NotifyValetDisabled();
+    void NotifyValetHood();
+    void NotifyValetTrunk();
     void SaveStatus();
     void RestoreStatus();
     void HandleCharging();
@@ -153,6 +159,10 @@ class OvmsVehicleSmartED : public OvmsVehicle
     OvmsMetricInt *mt_ed_eco_const;             // eco score on constant driving over last 6 hours
     OvmsMetricInt *mt_ed_eco_coast;             // eco score on coasting over last 6 hours
     OvmsMetricInt *mt_ed_eco_score;             // eco score shown on dashboard over last 6 hours
+    
+    OvmsMetricInt *mt_ed_hv_off_time;           // HV off Timer
+    
+    OvmsMetricFloat *mt_12v_batt_voltage;       // 12V Batt Voltage from can
 
   private:
     unsigned int m_candata_timer;
@@ -173,6 +183,8 @@ class OvmsVehicleSmartED : public OvmsVehicle
     bool m_notify_trip;                     // Notify Trip values after driving end (default=true)
     int m_preclima_time;                    // pre clima time (default=15 minutes)
     int m_reboot_time;                      // Reboot time
+    bool m_reboot;                          // Reboot Module or Restart Network
+    bool m_gpio_highlow;                    // EGPIO direction
     
     uint16_t HVcontactState;                // contactor state: 0 := OFF, 2 := ON
     uint16_t myBMS_Year;                    // year of battery final testing
@@ -274,9 +286,37 @@ class OvmsVehicleSmartED : public OvmsVehicle
     void BmsSetCellArrangementCapacity(int readings, int readingspermodule);
     void BmsSetCellCapacity(int index, float value);
     void BmsRestartCellCapacitys();
+    void BmsResetCellStats();
 
   public:
     void BmsResetCellCapacitys();
+  
+  private:
+    void AutoSetRecu();
+    bool m_auto_set_recu;
+  
+  protected:
+    void RestartNetwork();
+    void ShutDown();
+    int m_shutdown_ticker;
+  
+  public:
+    bool ObdRequest(uint16_t txid, uint16_t rxid, uint32_t request, string& response, int timeout_ms=3000);
+    static void shell_obd_request(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
+    static void shell_obd_request_volts(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
+  
+  protected:
+    string              smarted_obd_rxbuf;
+    OvmsMutex           smarted_obd_request;
+    OvmsSemaphore       smarted_obd_rxwait;
+  
+  protected:
+    void TempPoll();
+  
+  // charging 12V
+  protected:
+    void HandleCharging12v();
+    unsigned int m_charging_timer;
 };
 
 #endif //#ifndef __VEHICLE_SMARTED_H__

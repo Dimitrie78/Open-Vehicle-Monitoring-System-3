@@ -26,6 +26,10 @@
 ; THE SOFTWARE.
 */
 
+// We're using ESP_EARLY_LOG* (direct USB console output) for protocol debug logging.
+// To enable protocol debug logging locally, uncomment:
+// #define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
+
 #include "ovms_log.h"
 static const char *TAG = "websocket";
 
@@ -77,15 +81,17 @@ WebSocketHandler::WebSocketHandler(mg_connection* nc, size_t slot, size_t modifi
 WebSocketHandler::~WebSocketHandler()
 {
   MyCommandApp.DeregisterConsole(this);
-  while (xQueueReceive(m_jobqueue, &m_job, 0) == pdTRUE)
-    ClearTxJob(m_job);
-  vQueueDelete(m_jobqueue);
+  if (m_jobqueue) {
+    while (xQueueReceive(m_jobqueue, &m_job, 0) == pdTRUE)
+      ClearTxJob(m_job);
+    vQueueDelete(m_jobqueue);
+  }
 }
 
 
 void WebSocketHandler::ProcessTxJob()
 {
-  //ESP_LOGV(TAG, "WebSocketHandler[%p]: ProcessTxJob type=%d, sent=%d ack=%d", m_nc, m_job.type, m_sent, m_ack);
+  ESP_EARLY_LOGV(TAG, "WebSocketHandler[%p]: ProcessTxJob type=%d, sent=%d ack=%d", m_nc, m_job.type, m_sent, m_ack);
   
   // process job, send next chunk:
   switch (m_job.type)
@@ -93,10 +99,10 @@ void WebSocketHandler::ProcessTxJob()
     case WSTX_Event:
     {
       if (m_sent && m_ack) {
-        ESP_LOGV(TAG, "WebSocketHandler[%p]: ProcessTxJob type=%d done", m_nc, m_job.type);
+        ESP_EARLY_LOGV(TAG, "WebSocketHandler[%p]: ProcessTxJob type=%d done", m_nc, m_job.type);
         ClearTxJob(m_job);
       } else {
-        extram::string msg;
+        std::string msg;
         msg.reserve(128);
         msg = "{\"event\":\"";
         msg += m_job.event;
@@ -121,7 +127,7 @@ void WebSocketHandler::ProcessTxJob()
       for (i=0, m=MyMetrics.m_first; i < m_sent && m != NULL; m=m->m_next, i++);
       
       // build msg:
-      extram::string msg;
+      std::string msg;
       msg.reserve(2*XFER_CHUNK_SIZE+128);
       msg = "{\"metrics\":{";
       for (i=0; m && msg.size() < XFER_CHUNK_SIZE; m=m->m_next) {
@@ -130,7 +136,7 @@ void WebSocketHandler::ProcessTxJob()
           msg += '\"';
           msg += m->m_name;
           msg += "\":";
-          msg += m->AsJSON().c_str();
+          msg += m->AsJSON();
           i++;
         }
       }
@@ -138,7 +144,7 @@ void WebSocketHandler::ProcessTxJob()
       // send msg:
       if (i) {
         msg += "}}";
-        //ESP_LOGV(TAG, "WebSocket msg: %s", msg.c_str());
+        ESP_EARLY_LOGV(TAG, "WebSocket msg: %s", msg.c_str());
         mg_send_websocket_frame(m_nc, WEBSOCKET_OP_TEXT, msg.data(), msg.size());
         m_sent += i;
       }
@@ -146,7 +152,7 @@ void WebSocketHandler::ProcessTxJob()
       // done?
       if (!m && m_ack == m_sent) {
         if (m_sent)
-          ESP_LOGV(TAG, "WebSocketHandler[%p]: ProcessTxJob type=%d done, sent=%d metrics", m_nc, m_job.type, m_sent);
+          ESP_EARLY_LOGV(TAG, "WebSocketHandler[%p]: ProcessTxJob type=%d done, sent=%d metrics", m_nc, m_job.type, m_sent);
         ClearTxJob(m_job);
       }
       
@@ -157,11 +163,11 @@ void WebSocketHandler::ProcessTxJob()
     {
       if (m_sent && m_ack == m_job.notification->GetValueSize()+1) {
         // done:
-        ESP_LOGV(TAG, "WebSocketHandler[%p]: ProcessTxJob type=%d done, sent %d bytes", m_nc, m_job.type, m_sent);
+        ESP_EARLY_LOGV(TAG, "WebSocketHandler[%p]: ProcessTxJob type=%d done, sent %d bytes", m_nc, m_job.type, m_sent);
         ClearTxJob(m_job);
       } else {
         // build frame:
-        extram::string msg;
+        std::string msg;
         msg.reserve(XFER_CHUNK_SIZE+128);
         int op;
         
@@ -170,7 +176,7 @@ void WebSocketHandler::ProcessTxJob()
           msg += "{\"notify\":{\"type\":\"";
           msg += m_job.notification->GetType()->m_name;
           msg += "\",\"subtype\":\"";
-          msg += mqtt_topic(m_job.notification->GetSubType()).c_str();
+          msg += mqtt_topic(m_job.notification->GetSubType());
           msg += "\",\"value\":\"";
           m_sent = 1;
         } else {
@@ -178,7 +184,7 @@ void WebSocketHandler::ProcessTxJob()
         }
         
         extram::string part = m_job.notification->GetValue().substr(m_sent-1, XFER_CHUNK_SIZE);
-        msg += json_encode(part).c_str();
+        msg += json_encode(part);
         m_sent += part.size();
         
         if (m_sent < m_job.notification->GetValueSize()+1) {
@@ -189,7 +195,7 @@ void WebSocketHandler::ProcessTxJob()
         
         // send frame:
         mg_send_websocket_frame(m_nc, op, msg.data(), msg.size());
-        //ESP_LOGV(TAG, "WebSocketHandler[%p]: ProcessTxJob type=%d: sent %d bytes, op=%04x", m_nc, m_job.type, m_sent, op);
+        ESP_EARLY_LOGV(TAG, "WebSocketHandler[%p]: ProcessTxJob type=%d: sent %d bytes, op=%04x", m_nc, m_job.type, m_sent, op);
       }
       break;
     }
@@ -219,7 +225,7 @@ void WebSocketHandler::ProcessTxJob()
       else if (m_ack == m_sent) {
         // done:
         if (m_sent)
-          ESP_LOGV(TAG, "WebSocketHandler[%p]: ProcessTxJob type=%d done, sent=%d lines", m_nc, m_job.type, m_sent);
+          ESP_EARLY_LOGV(TAG, "WebSocketHandler[%p]: ProcessTxJob type=%d done, sent=%d lines", m_nc, m_job.type, m_sent);
         ClearTxJob(m_job);
       }
       
@@ -274,6 +280,7 @@ void WebSocketHandler::ClearTxJob(WebSocketTxJob &job)
 
 bool WebSocketHandler::AddTxJob(WebSocketTxJob job, bool init_tx)
 {
+  if (!m_jobqueue) return false;
   if (xQueueSend(m_jobqueue, &job, 0) != pdTRUE) {
     m_jobqueue_overflow_status |= 1;
     m_jobqueue_overflow_dropcnt++;
@@ -290,6 +297,7 @@ bool WebSocketHandler::AddTxJob(WebSocketTxJob job, bool init_tx)
 
 bool WebSocketHandler::GetNextTxJob()
 {
+  if (!m_jobqueue) return false;
   if (xQueueReceive(m_jobqueue, &m_job, 0) == pdTRUE) {
     // init new job state:
     m_sent = m_ack = 0;
@@ -340,7 +348,8 @@ int WebSocketHandler::HandleEvent(int ev, void* p)
     }
     
     case MG_EV_POLL:
-      //ESP_LOGV(TAG, "WebSocketHandler[%p] EV_POLL qlen=%d jobtype=%d sent=%d ack=%d", m_nc, uxQueueMessagesWaiting(m_jobqueue), m_job.type, m_sent, m_ack);
+      ESP_EARLY_LOGV(TAG, "WebSocketHandler[%p] EV_POLL qlen=%d jobtype=%d sent=%d ack=%d", m_nc,
+        m_jobqueue ? uxQueueMessagesWaiting(m_jobqueue) : -1, m_job.type, m_sent, m_ack);
       // Check for new transmission:
       InitTx();
       // Log queue overflows & resolves:
@@ -359,7 +368,8 @@ int WebSocketHandler::HandleEvent(int ev, void* p)
     
     case MG_EV_SEND:
       // last transmission has finished
-      //ESP_LOGV(TAG, "WebSocketHandler[%p] EV_SEND qlen=%d jobtype=%d sent=%d ack=%d", m_nc, uxQueueMessagesWaiting(m_jobqueue), m_job.type, m_sent, m_ack);
+      ESP_EARLY_LOGV(TAG, "WebSocketHandler[%p] EV_SEND qlen=%d jobtype=%d sent=%d ack=%d", m_nc,
+        m_jobqueue ? uxQueueMessagesWaiting(m_jobqueue) : -1, m_job.type, m_sent, m_ack);
       ContinueTx();
       break;
     
@@ -480,13 +490,13 @@ void OvmsWebServer::DestroyWebSocketHandler(WebSocketHandler* handler)
       if (m_client_cnt == 0)
         xTimerStop(m_update_ticker, 0);
       
-      // deregister:
-      MyNotify.ClearReader(m_client_slots[i].reader);
-      
       // destroy handler:
       mg_connection* nc = handler->m_nc;
       m_client_slots[i].handler = NULL;
       delete handler;
+      
+      // clear unqueued notifications if any:
+      MyNotify.ClearReader(m_client_slots[i].reader);
       
       ESP_LOGD(TAG, "WebSocket[%p] handler %p closed; %d clients active", nc, handler, m_client_cnt);
       MyEvents.SignalEvent("server.web.socket.closed", (void*)m_client_cnt);

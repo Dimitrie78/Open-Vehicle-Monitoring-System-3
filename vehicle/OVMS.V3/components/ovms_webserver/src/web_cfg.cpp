@@ -27,7 +27,9 @@
 */
 
 #include "ovms_log.h"
+#ifdef CONFIG_OVMS_COMP_MODEM_SIMCOM
 static const char *TAG = "webserver";
+#endif
 
 #include <string.h>
 #include <stdio.h>
@@ -845,7 +847,7 @@ void OvmsWebServer::HandleCfgModem(PageEntry_t& p, PageContext_t& c)
       "</script>";
   }
   c.input_info("SIM ICCID", info.c_str());
-  c.input_text("SIM card PIN code", "pincode", pincode.c_str(), "", 
+  c.input_text("SIM card PIN code", "pincode", pincode.c_str(), "",
     wrongpincode ? "<p style=\"color: red\">Wrong PIN code entered previously!</p>" : "<p>Not needed for Hologram SIM cards</p>");
 
   c.fieldset_start("Internet");
@@ -942,7 +944,7 @@ void OvmsWebServer::HandleCfgNotification(PageEntry_t& p, PageContext_t& c)
       pri.append(msg);
       pmap[buf] = pri;
     }
-   
+
     if (error == "") {
       if (c.getvar("action") == "save")
         {
@@ -955,7 +957,7 @@ void OvmsWebServer::HandleCfgNotification(PageEntry_t& p, PageContext_t& c)
         c.alert("success", "<p class=\"lead\">Pushover connection configured.</p>");
         OutputHome(p, c);
         c.done();
-        return;        
+        return;
         }
       else if (c.getvar("action") == "test")
         {
@@ -968,7 +970,7 @@ void OvmsWebServer::HandleCfgNotification(PageEntry_t& p, PageContext_t& c)
             c.getvar("token"),
             c.getvar("test_message"),
             atoi(c.getvar("test_priority").c_str()),
-            c.getvar("test_sound"), 
+            c.getvar("test_sound"),
             atoi(c.getvar("retry").c_str()),
             atoi(c.getvar("expire").c_str()),
             true /* receive server reply as reply/pushover-type notification */ ))
@@ -976,7 +978,7 @@ void OvmsWebServer::HandleCfgNotification(PageEntry_t& p, PageContext_t& c)
           c.alert("danger", "<p class=\"lead\">Could not send test message!</p>");
           }
         }
-    } 
+    }
     else {
       // output error, return to form:
       error = "<p class=\"lead\">Error!</p><ul class=\"errorlist\">" + error + "</ul>";
@@ -1307,10 +1309,12 @@ void OvmsWebServer::HandleCfgServerV2(PageEntry_t& p, PageContext_t& c)
   std::string error;
   std::string server, vehicleid, password, port;
   std::string updatetime_connected, updatetime_idle;
+  bool tls;
 
   if (c.method == "POST") {
     // process form submission:
     server = c.getvar("server");
+    tls = (c.getvar("tls") == "yes");
     vehicleid = c.getvar("vehicleid");
     password = c.getvar("password");
     port = c.getvar("port");
@@ -1342,10 +1346,11 @@ void OvmsWebServer::HandleCfgServerV2(PageEntry_t& p, PageContext_t& c)
     if (error == "") {
       // success:
       MyConfig.SetParamValue("server.v2", "server", server);
+      MyConfig.SetParamValueBool("server.v2", "tls", tls);
       MyConfig.SetParamValue("server.v2", "port", port);
       MyConfig.SetParamValue("vehicle", "id", vehicleid);
       if (password != "")
-        MyConfig.SetParamValue("server.v2", "password", password);
+        MyConfig.SetParamValue("password","server.v2", password);
       MyConfig.SetParamValue("server.v2", "updatetime.connected", updatetime_connected);
       MyConfig.SetParamValue("server.v2", "updatetime.idle", updatetime_idle);
 
@@ -1364,8 +1369,9 @@ void OvmsWebServer::HandleCfgServerV2(PageEntry_t& p, PageContext_t& c)
   else {
     // read configuration:
     server = MyConfig.GetParamValue("server.v2", "server");
+    tls = MyConfig.GetParamValueBool("server.v2", "tls", false);
     vehicleid = MyConfig.GetParamValue("vehicle", "id");
-    password = MyConfig.GetParamValue("server.v2", "password");
+    password = MyConfig.GetParamValue("password", "server.v2");
     port = MyConfig.GetParamValue("server.v2", "port");
     updatetime_connected = MyConfig.GetParamValue("server.v2", "updatetime.connected");
     updatetime_idle = MyConfig.GetParamValue("server.v2", "updatetime.idle");
@@ -1383,7 +1389,9 @@ void OvmsWebServer::HandleCfgServerV2(PageEntry_t& p, PageContext_t& c)
       "<li><code>api.openvehicles.com</code> <a href=\"https://www.openvehicles.com/user/register\" target=\"_blank\">Registration</a></li>"
       "<li><code>ovms.dexters-web.de</code> <a href=\"https://dexters-web.de/?action=NewAccount\" target=\"_blank\">Registration</a></li>"
     "</ul>");
-  c.input_text("Port", "port", port.c_str(), "optional, default: 6867");
+  c.input_checkbox("Enable TLS", "tls", tls,
+    "<p>Note: enable transport layer security (encryption) if your server supports it (all public OVMS servers do).</p>");
+  c.input_text("Port", "port", port.c_str(), "optional, default: 6867 (no TLS) / 6870 (TLS)");
   c.input_text("Vehicle ID", "vehicleid", vehicleid.c_str(), "Use ASCII letters, digits and '-'",
     NULL, "autocomplete=\"section-serverv2 username\"");
   c.input_password("Server password", "password", "", "empty = no change",
@@ -1414,10 +1422,12 @@ void OvmsWebServer::HandleCfgServerV3(PageEntry_t& p, PageContext_t& c)
   std::string error;
   std::string server, user, password, port, topic_prefix;
   std::string updatetime_connected, updatetime_idle;
+  bool tls;
 
   if (c.method == "POST") {
     // process form submission:
     server = c.getvar("server");
+    tls = (c.getvar("tls") == "yes");
     user = c.getvar("user");
     password = c.getvar("password");
     port = c.getvar("port");
@@ -1446,6 +1456,7 @@ void OvmsWebServer::HandleCfgServerV3(PageEntry_t& p, PageContext_t& c)
     if (error == "") {
       // success:
       MyConfig.SetParamValue("server.v3", "server", server);
+      MyConfig.SetParamValueBool("server.v3", "tls", tls);
       MyConfig.SetParamValue("server.v3", "user", user);
       if (password != "")
         MyConfig.SetParamValue("password", "server.v3", password);
@@ -1469,6 +1480,7 @@ void OvmsWebServer::HandleCfgServerV3(PageEntry_t& p, PageContext_t& c)
   else {
     // read configuration:
     server = MyConfig.GetParamValue("server.v3", "server");
+    tls = MyConfig.GetParamValueBool("server.v3", "tls", false);
     user = MyConfig.GetParamValue("server.v3", "user");
     password = MyConfig.GetParamValue("password", "server.v3");
     port = MyConfig.GetParamValue("server.v3", "port");
@@ -1489,7 +1501,9 @@ void OvmsWebServer::HandleCfgServerV3(PageEntry_t& p, PageContext_t& c)
       "<li><code>io.adafruit.com</code> <a href=\"https://accounts.adafruit.com/users/sign_in\" target=\"_blank\">Registration</a></li>"
       "<li><a href=\"https://github.com/mqtt/mqtt.github.io/wiki/public_brokers\" target=\"_blank\">More public MQTT brokers</a></li>"
     "</ul>");
-  c.input_text("Port", "port", port.c_str(), "optional, default: 1883");
+  c.input_checkbox("Enable TLS", "tls", tls,
+    "<p>Note: enable transport layer security (encryption) if your server supports it.</p>");
+  c.input_text("Port", "port", port.c_str(), "optional, default: 1883 (no TLS) / 8883 (TLS)");
   c.input_text("Username", "user", user.c_str(), "Enter user login name",
     NULL, "autocomplete=\"section-serverv3 username\"");
   c.input_password("Password", "password", "", "Enter user password, empty = no change",
@@ -1585,15 +1599,20 @@ void OvmsWebServer::HandleCfgWebServer(PageEntry_t& p, PageContext_t& c)
   c.panel_start("primary", "Webserver configuration");
   c.form_start(p.uri);
 
-  c.input_checkbox("Enable file access", "enable_files", enable_files);
+  c.input_checkbox("Enable file access", "enable_files", enable_files,
+    "<p>If enabled, paths not handled by the webserver itself are mapped to files below the web root path.</p>"
+    "<p>Example: <code>&lt;img src=\"/icons/smiley.png\"&gt;</code> → file <code>/sd/icons/smiley.png</code>"
+    " (if root path is <code>/sd</code>)</p>");
   c.input_text("Root path", "docroot", docroot.c_str(), "Default: /sd");
   c.input_checkbox("Enable directory listings", "enable_dirlist", enable_dirlist);
 
   c.input_checkbox("Enable global file auth", "auth_global", auth_global,
     "<p>If enabled, file access is globally protected by the admin password (if set).</p>"
-    "<p>Disabling allows public access to directories without an auth file.</p>");
-  c.input_text("Directory auth file", "auth_file", auth_file.c_str(), "Default: .htaccess",
-    "<p>Note: sub directories do not inherit the parent auth file.</p>");
+    "<p>Disabling allows public access to directories without an auth file.</p>"
+    "<p>To protect a directory, you can e.g. copy the default auth file:"
+    " <code class=\"autoselect\">vfs cp /store/.htpasswd /sd/…/.htpasswd</code></p>");
+  c.input_text("Directory auth file", "auth_file", auth_file.c_str(), "Default: .htpasswd",
+    "<p>Note: sub directories do <u>not</u> inherit the parent auth file.</p>");
   c.input_text("Auth domain/realm", "auth_domain", auth_domain.c_str(), "Default: ovms");
 
   c.input_button("default", "Save");
@@ -1655,6 +1674,16 @@ void OvmsWebServer::HandleCfgWifi(PageEntry_t& p, PageContext_t& c)
     "<hr>"
     "<button type=\"submit\" class=\"btn btn-default center-block\">Save</button>"
     "</form>"
+    "<style>\n"
+    ".table>tbody>tr.active>td, .table>tbody>tr.active:hover>td {\n"
+      "background-color: #bed2e3;\n"
+      "cursor: pointer;\n"
+    "}\n"
+    ".night .table>tbody>tr.active>td {\n"
+      "background-color: #293746;\n"
+      "cursor: pointer;\n"
+    "}\n"
+    "</style>\n"
     "<script>"
     "function delRow(el){"
       "$(el).parent().parent().remove();"
@@ -1666,8 +1695,19 @@ void OvmsWebServer::HandleCfgWifi(PageEntry_t& p, PageContext_t& c)
       "var row = $('"
           "<tr>"
             "<td><button type=\"button\" class=\"btn btn-danger\" onclick=\"delRow(this)\"><strong>✖</strong></button></td>"
-            "<td><input type=\"text\" class=\"form-control\" name=\"' + pfx + '_ssid_' + nr + '\" placeholder=\"SSID\""
-              " autocomplete=\"section-wifi-' + pfx + ' username\"></td>"
+            "' + ((pfx == 'client') ? '"
+              "<td><div class=\"input-group\">"
+                "<input type=\"text\" class=\"form-control\" name=\"' + pfx + '_ssid_' + nr + '\" placeholder=\"SSID\""
+                " id=\"' + pfx + '_ssid_' + nr + '\" autocomplete=\"section-wifi-' + pfx + ' username\">"
+                "<div class=\"input-group-btn\">"
+                  "<button type=\"button\" class=\"btn btn-default action-wifiscan\" data-target=\"#' + pfx + '_ssid_' + nr + '\">"
+                    "<span class=\"hidden-xs\">Select</span><span class=\"hidden-sm hidden-md hidden-lg\">⊙</span>"
+                  "</button>"
+                "</div></div></td>"
+            "' : '"
+              "<td><input type=\"text\" class=\"form-control\" name=\"' + pfx + '_ssid_' + nr + '\" placeholder=\"SSID\""
+                " autocomplete=\"section-wifi-' + pfx + ' username\"></td>"
+            "') + '"
             "<td><input type=\"password\" class=\"form-control\" name=\"' + pfx + '_pass_' + nr + '\" placeholder=\"Passphrase\""
               " autocomplete=\"section-wifi-' + pfx + ' current-password\"></td>"
           "</tr>"
@@ -1675,6 +1715,58 @@ void OvmsWebServer::HandleCfgWifi(PageEntry_t& p, PageContext_t& c)
       "$(el).parent().parent().before(row).prev().find(\"input\").first().focus();"
       "counter.val(nr);"
     "}"
+    "$('#panel-wifi-configuration').on('click', '.action-wifiscan', function(){\n"
+      "var tgt = $(this).data(\"target\");\n"
+      "var $tgt = $(tgt);\n"
+      "var ssid_sel = \"\";\n"
+      "var $dlg = $('<div id=\"wifiscan-dialog\" />').dialog({\n"
+        "size: 'lg',\n"
+        "title: 'Select Wifi Network',\n"
+        "body:\n"
+          "'<p id=\"wifiscan-info\">Scanning, please wait…</p>'+\n"
+          "'<table id=\"wifiscan-list\" class=\"table table-condensed table-border table-striped table-hover\">'+\n"
+          "'<thead><tr>'+\n"
+            "'<th class=\"col-xs-4\">AP SSID</th>'+\n"
+            "'<th class=\"col-xs-4 hidden-xs\">MAC Address</th>'+\n"
+            "'<th class=\"col-xs-1 text-center\">Chan</th>'+\n"
+            "'<th class=\"col-xs-1 text-center\">RSSI</th>'+\n"
+            "'<th class=\"col-xs-2 hidden-xs\">Auth</th>'+\n"
+          "'</tr></thead><tbody/></table>',\n"
+        "buttons: [\n"
+          "{ label: 'Cancel' },\n"
+          "{ label: 'Select', btnClass: 'primary', action: function(input) { $tgt.val(ssid_sel); } },\n"
+        "],\n"
+      "});\n"
+      "var $tb = $dlg.find('#wifiscan-list > tbody'), $info = $dlg.find('#wifiscan-info');\n"
+      "$tb.on(\"click\", \"tr\", function(ev) {\n"
+        "var $tr = $(this);\n"
+        "$tr.addClass(\"active\").siblings().removeClass(\"active\");\n"
+        "ssid_sel = $tr.children().first().text();\n"
+        "if (ssid_sel == '<HIDDEN>') ssid_sel = '';\n"
+      "}).on(\"dblclick\", \"tr\", function(ev) {\n"
+        "$dlg.modal(\"hide\");\n"
+        "$tgt.val(ssid_sel);\n"
+      "});\n"
+      "$dlg.addClass(\"loading\");\n"
+      "loadcmd(\"wifi scan -j\").then(function(output) {\n"
+        "$dlg.removeClass(\"loading\");\n"
+        "var res = JSON.parse(output);\n"
+        "if (res.error) {\n"
+          "$info.text(res.error);\n"
+        "} else if (res.list.length == 0) {\n"
+          "$info.text(\"Sorry, no networks found.\");\n"
+        "} else {\n"
+          "var i, ap;\n"
+          "$info.text(\"Available networks sorted by signal strength:\");\n"
+          "for (i = 0; i < res.list.length; i++) {\n"
+            "ap = res.list[i];\n"
+            "$('<tr><td>'+encode_html(ap.ssid)+'</td><td class=\"hidden-xs\">'+ap.bssid+\n"
+              "'</td><td class=\"text-center\">'+ap.chan+'</td><td class=\"text-center\">'+ap.rssi+\n"
+              "'</td><td class=\"hidden-xs\">'+ap.auth+'</td></tr>').appendTo($tb);\n"
+          "}\n"
+        "}\n"
+      "});\n"
+    "});\n"
     "</script>");
 
   c.panel_end();
@@ -1703,44 +1795,65 @@ void OvmsWebServer::OutputWifiTable(PageEntry_t& p, PageContext_t& c, const std:
       "<table class=\"table\">"
         "<thead>"
           "<tr>"
-            "<th width=\"10%\"></th>"
-            "<th width=\"45%\">SSID</th>"
-            "<th width=\"45%\">Passphrase</th>"
+            "<th width=\"10%%\"></th>"
+            "<th width=\"45%%\">SSID</th>"
+            "<th width=\"45%%\">Passphrase</th>"
           "</tr>"
         "</thead>"
         "<tbody>"
     , _attr(prefix), max);
 
-  if (c.method == "POST") {
-    for (pos = 1; pos <= max; pos++) {
-      sprintf(buf, "%s_ssid_%d", prefix.c_str(), pos);
-      ssid = c.getvar(buf);
+  auto gen_row = [&c,&pos,&pos_autostart,&prefix,&ssid]() {
+    if (prefix == "client") {
+      // client entry: add network scanner/selector
       c.printf(
           "<tr>"
             "<td><button type=\"button\" class=\"btn btn-danger\" onclick=\"delRow(this)\" %s><strong>✖</strong></button></td>"
-            "<td><input type=\"text\" class=\"form-control\" name=\"%s_ssid_%d\" value=\"%s\"></td>"
+            "<td><div class=\"input-group\">"
+              "<input type=\"text\" class=\"form-control\" name=\"%s_ssid_%d\" placeholder=\"SSID\" value=\"%s\""
+              " id=\"%s_ssid_%d\" autocomplete=\"section-wifi-%s username\">"
+              "<div class=\"input-group-btn\">"
+                "<button type=\"button\" class=\"btn btn-default action-wifiscan\" data-target=\"#%s_ssid_%d\">"
+                  "<span class=\"hidden-xs\">Select</span><span class=\"hidden-sm hidden-md hidden-lg\">⊙</span>"
+                "</button>"
+              "</div></div></td>"
             "<td><input type=\"password\" class=\"form-control\" name=\"%s_pass_%d\" placeholder=\"no change\"></td>"
           "</tr>"
       , (pos == pos_autostart) ? "disabled title=\"Current autostart network\"" : ""
       , _attr(prefix), pos, _attr(ssid)
+      , _attr(prefix), pos, _attr(prefix)
+      , _attr(prefix), pos
       , _attr(prefix), pos);
+    } else {
+      // ap entry:
+      c.printf(
+          "<tr>"
+            "<td><button type=\"button\" class=\"btn btn-danger\" onclick=\"delRow(this)\" %s><strong>✖</strong></button></td>"
+            "<td><input type=\"text\" class=\"form-control\" name=\"%s_ssid_%d\" value=\"%s\" autocomplete=\"section-wifi-%s username\"></td>"
+            "<td><input type=\"password\" class=\"form-control\" name=\"%s_pass_%d\" placeholder=\"no change\"></td>"
+          "</tr>"
+      , (pos == pos_autostart) ? "disabled title=\"Current autostart network\"" : ""
+      , _attr(prefix), pos, _attr(ssid), _attr(prefix)
+      , _attr(prefix), pos);
+    }
+  };
+
+  if (c.method == "POST") {
+    for (pos = 1; pos <= max; pos++) {
+      sprintf(buf, "%s_ssid_%d", prefix.c_str(), pos);
+      ssid = c.getvar(buf);
+      gen_row();
     }
   }
   else {
     for (auto const& kv : param->m_map) {
       pos++;
       ssid = kv.first;
+      if (endsWith(ssid, ".ovms.staticip"))
+        continue;
       if (ssid == autostart_ssid)
         pos_autostart = pos;
-      c.printf(
-          "<tr>"
-            "<td><button type=\"button\" class=\"btn btn-danger\" onclick=\"delRow(this)\" %s><strong>✖</strong></button></td>"
-            "<td><input type=\"text\" class=\"form-control\" name=\"%s_ssid_%d\" value=\"%s\"></td>"
-            "<td><input type=\"password\" class=\"form-control\" name=\"%s_pass_%d\" placeholder=\"no change\"></td>"
-          "</tr>"
-      , (pos == pos_autostart) ? "disabled title=\"Current autostart network\"" : ""
-      , _attr(prefix), pos, _attr(ssid)
-      , _attr(prefix), pos);
+      gen_row();
     }
   }
 
@@ -1794,6 +1907,8 @@ void OvmsWebServer::UpdateWifiTable(PageEntry_t& p, PageContext_t& c, const std:
       error += "<li>SSID <code>" + ssid + "</code>: password is too short (min " + buf + " chars)</li>";
     }
     newmap[ssid] = pass;
+    if (param->IsDefined(ssid + ".ovms.staticip"))
+      newmap[ssid + ".ovms.staticip"] = param->GetValue(ssid + ".ovms.staticip");
     if (i == pos_autostart)
       ssid_autostart = ssid;
   }
@@ -1862,20 +1977,15 @@ void OvmsWebServer::HandleCfgAutoInit(PageEntry_t& p, PageContext_t& c)
     }
     if (wifi_mode == "client" || wifi_mode == "apclient") {
       if (wifi_ssid_client.empty()) {
-        if (wifi_mode == "apclient") {
-          error += "<li data-input=\"wifi_ssid_client\">Wifi client scan mode not supported for AP+Client!</li>";
+        // check for defined client SSIDs:
+        OvmsConfigParam* param = MyConfig.CachedParam("wifi.ssid");
+        int cnt = 0;
+        for (auto const& kv : param->m_map) {
+          if (kv.second != "")
+            cnt++;
         }
-        else {
-          // check for defined client SSIDs:
-          OvmsConfigParam* param = MyConfig.CachedParam("wifi.ssid");
-          int cnt = 0;
-          for (auto const& kv : param->m_map) {
-            if (kv.second != "")
-              cnt++;
-          }
-          if (cnt == 0) {
-            error += "<li data-input=\"wifi_ssid_client\">Wifi client scan mode invalid: no SSIDs defined!</li>";
-          }
+        if (cnt == 0) {
+          error += "<li data-input=\"wifi_ssid_client\">Wifi client scan mode invalid: no SSIDs defined!</li>";
         }
       }
       else if (MyConfig.GetParamValue("wifi.ssid", wifi_ssid_client).empty()) {
@@ -3461,6 +3571,10 @@ void OvmsWebServer::HandleEditor(PageEntry_t& p, PageContext_t& c)
         "text-align: center !important;\n"
       "}\n"
     "}\n"
+    ".log { font-size: 87%; color: gray; }\n"
+    ".log.log-I { color: green; }\n"
+    ".log.log-W { color: darkorange; }\n"
+    ".log.log-E { color: red; }\n"
     "</style>\n"
     "<div class=\"panel panel-primary\">\n"
       "<div class=\"panel-heading\">Text Editor</div>\n"
@@ -3505,7 +3619,7 @@ void OvmsWebServer::HandleEditor(PageEntry_t& p, PageContext_t& c)
           "</div>\n"
         "</form>\n"
         "<div class=\"filedialog\" id=\"fileselect\" />\n"
-        "<pre id=\"output\" style=\"display:none\" />\n"
+        "<pre class=\"receiver\" id=\"output\" style=\"display:none\" />\n"
       "</div>\n"
       "<div class=\"panel-footer\">\n"
         "<p>Hints: you don't need to save to evaluate Javascript code. See <a target=\"_blank\"\n"
@@ -3519,7 +3633,7 @@ void OvmsWebServer::HandleEditor(PageEntry_t& p, PageContext_t& c)
   c.print(
     "<script>\n"
     "(function(){\n"
-      "var $ta = $('#input-content');\n"
+      "var $ta = $('#input-content'), $output = $('#output');\n"
       "var path = $('#input-path').val();\n"
       "var quicknav = ['/sd/', '/store/', '/store/scripts/', '/store/plugin/'];\n"
       "var dir = path.replace(/[^/]*$/, '');\n"
@@ -3573,9 +3687,9 @@ void OvmsWebServer::HandleEditor(PageEntry_t& p, PageContext_t& c)
       "$('.action-script-reload').on('click', function() {\n"
         "$('.panel').addClass('loading');\n"
         "$ta.focus();\n"
-        "loadcmd('script reload', '#output').then(function(){\n"
+        "$output.empty().show();\n"
+        "loadcmd('script reload', '+#output').then(function(){\n"
           "$('.panel').removeClass('loading');\n"
-          "$('#output').show();\n"
         "});\n"
       "});\n"
       "// Utility: select textarea line\n"
@@ -3600,17 +3714,25 @@ void OvmsWebServer::HandleEditor(PageEntry_t& p, PageContext_t& c)
       "$('.action-script-eval').on('click', function() {\n"
         "$('.panel').addClass('loading');\n"
         "$ta.focus();\n"
-        "loadcmd({ command: $ta.val(), type: 'js' }, '#output').then(function(output){\n"
+        "$output.empty().show();\n"
+        "loadcmd({ command: $ta.val(), type: 'js' }, '+#output').then(function(output){\n"
           "$('.panel').removeClass('loading');\n"
-          "$('#output').show();\n"
           "if (output == \"\") {\n"
-            "$('#output').text(\"(OK, no output)\");\n"
+            "$output.append(\"(OK, no output)\");\n"
             "return;\n"
           "}\n"
           "var hasLine = output.match(/\\(line ([0-9]+)\\)/);\n"
           "if (hasLine && hasLine.length >= 2)\n"
             "selectLine(hasLine[1]);\n"
         "});\n"
+      "});\n"
+      "$output.on(\"msg:log\", function(ev, msg){\n"
+        "if ($output.css(\"display\") == \"none\") return;\n"
+        "if (!/^..[0-9()]+ script: /.test(msg)) return;\n"
+        "var autoscroll = ($output.get(0).scrollTop + $output.innerHeight()) >= $output.get(0).scrollHeight;\n"
+        "htmsg = '<div class=\"log log-'+msg[0]+'\">'+encode_html(msg.replace(/(\\S)\\|+(\\S)/g, \"$1\\n……: $2\"))+'</div>';\n"
+        "$output.append(htmsg);\n"
+        "if (autoscroll) $output.scrollTop($output.get(0).scrollHeight);\n"
       "});\n"
       "/* textarea controls */\n"
       "$('.tac-wrap').on('click', function(ev) {\n"

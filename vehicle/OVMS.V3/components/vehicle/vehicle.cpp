@@ -968,6 +968,7 @@ OvmsVehicle::OvmsVehicle()
   m_poll_ml_remain = 0;
   m_poll_ml_offset = 0;
   m_poll_ml_frame = 0;
+  m_poll_wait = 0;
 
   m_bms_voltages = NULL;
   m_bms_vmins = NULL;
@@ -1530,6 +1531,22 @@ OvmsVehicle::vehicle_command_t OvmsVehicle::CommandHomelink(int button, int dura
   return NotImplemented;
   }
 
+#ifdef CONFIG_OVMS_COMP_TPMS
+
+bool OvmsVehicle::TPMSRead(std::vector<uint32_t> *tpms)
+  {
+  ESP_LOGE(TAG, "TPMS tyre IDs not implemented in this vehicle");
+  return false;
+  }
+
+bool OvmsVehicle::TPMSWrite(std::vector<uint32_t> &tpms)
+  {
+  ESP_LOGE(TAG, "TPMS tyre IDs not implemented in this vehicle");
+  return false;
+  }
+
+#endif // #ifdef CONFIG_OVMS_COMP_TPMS
+
 /**
  * CommandStat: default implementation of vehicle status output
  */
@@ -2019,7 +2036,24 @@ void OvmsVehicle::PollerSend()
 
   while (m_poll_plcur->txmoduleid != 0)
     {
-    if (m_poll_ml_remain > 7) return; // there are remaining poll replays from last poll.
+    // there are remaining poll replays from last poll. we wait for it.
+    if (m_poll_ml_remain > 7)
+      {
+      if (m_poll_wait)
+        {
+        // ESP_LOGD(TAG,"wait last Polling for %02x: there are remaining poll replays", m_poll_plcur->pid);
+        m_poll_wait = 0;
+        m_poll_ml_remain = 0;
+        return;
+        }
+      else
+        {
+        // ESP_LOGD(TAG,"wait Polling for %02x: there are remaining poll replays", m_poll_plcur->pid);
+        m_poll_wait = 1;
+        return;
+        }
+      }
+    m_poll_wait = 0;
     if ((m_poll_plcur->polltime[m_poll_state] > 0)&&
         ((m_poll_ticker % m_poll_plcur->polltime[m_poll_state] ) == 0))
       {
@@ -2041,7 +2075,7 @@ void OvmsVehicle::PollerSend()
         m_poll_moduleid_high = 0x7ef;
         }
 
-      // ESP_LOGI(TAG, "Polling for %d/%02x (expecting %03x/%03x-%03x)",
+      // ESP_LOGD(TAG, "Polling for %d/%02x (expecting %03x/%03x-%03x)",
       //   m_poll_type,m_poll_pid,m_poll_moduleid_sent,m_poll_moduleid_low,m_poll_moduleid_high);
       CAN_frame_t txframe;
       memset(&txframe,0,sizeof(txframe));
@@ -2325,7 +2359,7 @@ void OvmsVehicle::BmsSetCellArrangementVoltage(int readings, int readingspermodu
   m_bms_readings_v = readings;
   m_bms_readingspermodule_v = readingspermodule;
 
-  BmsResetCellVoltages();
+  BmsResetCellVoltages(true);
   }
 
 void OvmsVehicle::BmsSetCellArrangementTemperature(int readings, int readingspermodule)
@@ -2348,7 +2382,7 @@ void OvmsVehicle::BmsSetCellArrangementTemperature(int readings, int readingsper
   m_bms_readings_t = readings;
   m_bms_readingspermodule_t = readingspermodule;
 
-  BmsResetCellTemperatures();
+  BmsResetCellTemperatures(true);
   }
 
 int OvmsVehicle::BmsGetCellArangementVoltage(int* readings, int* readingspermodule)
@@ -2566,7 +2600,7 @@ void OvmsVehicle::BmsRestartCellTemperatures()
   m_bms_bitset_ct = 0;
   }
 
-void OvmsVehicle::BmsResetCellVoltages()
+void OvmsVehicle::BmsResetCellVoltages(bool full /*=false*/)
   {
   if (m_bms_readings_v > 0)
     {
@@ -2582,6 +2616,7 @@ void OvmsVehicle::BmsResetCellVoltages()
       m_bms_valerts[k] = 0;
       }
     m_bms_valerts_new = 0;
+    if (full) StandardMetrics.ms_v_bat_cell_voltage->ClearValue();
     StandardMetrics.ms_v_bat_cell_vmin->ClearValue();
     StandardMetrics.ms_v_bat_cell_vmax->ClearValue();
     StandardMetrics.ms_v_bat_cell_vdevmax->ClearValue();
@@ -2590,7 +2625,7 @@ void OvmsVehicle::BmsResetCellVoltages()
     }
   }
 
-void OvmsVehicle::BmsResetCellTemperatures()
+void OvmsVehicle::BmsResetCellTemperatures(bool full /*=false*/)
   {
   if (m_bms_readings_t > 0)
     {
@@ -2606,6 +2641,7 @@ void OvmsVehicle::BmsResetCellTemperatures()
       m_bms_talerts[k] = 0;
       }
     m_bms_talerts_new = 0;
+    if (full) StandardMetrics.ms_v_bat_cell_temp->ClearValue();
     StandardMetrics.ms_v_bat_cell_tmin->ClearValue();
     StandardMetrics.ms_v_bat_cell_tmax->ClearValue();
     StandardMetrics.ms_v_bat_cell_tdevmax->ClearValue();
@@ -2616,8 +2652,8 @@ void OvmsVehicle::BmsResetCellTemperatures()
 
 void OvmsVehicle::BmsResetCellStats()
   {
-  BmsResetCellVoltages();
-  BmsResetCellTemperatures();
+  BmsResetCellVoltages(false);
+  BmsResetCellTemperatures(false);
   }
 
 void OvmsVehicle::BmsStatus(int verbosity, OvmsWriter* writer)
@@ -2664,7 +2700,7 @@ void OvmsVehicle::BmsStatus(int verbosity, OvmsWriter* writer)
   writer->puts("Cells:");
   int kv = 0;
   int kt = 0;
-  for (int module = 0; module < (m_bms_readings_v/m_bms_readingspermodule_v); module++)
+  for (int module = 0; module < ((m_bms_readings_v+m_bms_readingspermodule_v-1)/m_bms_readingspermodule_v); module++)
     {
     writer->printf("    +");
     for (c=0;c<m_bms_readingspermodule_v;c++) { writer->printf("-------"); }
@@ -2674,12 +2710,18 @@ void OvmsVehicle::BmsStatus(int verbosity, OvmsWriter* writer)
     writer->printf("%3d |",module+1);
     for (c=0; c<m_bms_readingspermodule_v; c++)
       {
-      writer->printf(" %5.3fV",m_bms_voltages[kv++]);
+      if (kv < m_bms_readings_v)
+        writer->printf(" %5.3fV",m_bms_voltages[kv++]);
+      else
+        writer->printf("       ");
       }
     writer->printf(" |");
     for (c=0; c<m_bms_readingspermodule_t; c++)
       {
-      writer->printf(" %5.1fC",m_bms_temperatures[kt++]);
+      if (kt < m_bms_readings_t)
+        writer->printf(" %5.1fC",m_bms_temperatures[kt++]);
+      else
+        writer->printf("       ");
       }
     writer->puts(" |");
     }
