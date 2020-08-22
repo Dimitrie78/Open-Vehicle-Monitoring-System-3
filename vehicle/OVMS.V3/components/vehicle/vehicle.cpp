@@ -2244,8 +2244,8 @@ void OvmsVehicle::PollerReceive(CAN_frame_t* frame)
           (frame->data.u8[2] == 0x40+m_poll_type)&&
           ((frame->data.u8[4]+(((uint16_t) frame->data.u8[3]) << 8))  == m_poll_pid))
         {
-        // First frame is 4 bytes header (2 ISO-TP, 2 OBDII), 4 bytes data:
-        // [first=1,lenH] [lenL] [type+40] [pid] [data0] [data1] [data2] [data3]
+        // First frame is 5 bytes header (2 ISO-TP, 3 OBDII), 3 bytes data:
+        // [first=1,lenH] [lenL] [type+40] [pid] [pid] [data0] [data1] [data2]
         // Note that the value of 'len' includes the OBDII type and pid bytes,
         // but we don't count these in the data we pass to IncomingPollReply.
         //
@@ -2274,12 +2274,12 @@ void OvmsVehicle::PollerReceive(CAN_frame_t* frame)
         txframe.Write();
 
         // prepare frame processing, first frame contains first 4 bytes:
-        m_poll_ml_remain = (((uint16_t)(frame->data.u8[0]&0x0f))<<8) + frame->data.u8[1] - 3;
+        m_poll_ml_remain = (((uint16_t)(frame->data.u8[0]&0x0f))<<8) + frame->data.u8[1] - 3 - 3;
         m_poll_ml_offset = 3;
         m_poll_ml_frame = 0;
 
         //ESP_LOGD(TAG, "Poll ML first frame (frame=%d, remain=%d)",m_poll_ml_frame,m_poll_ml_remain);
-        IncomingPollReplyInternal(frame->origin, m_poll_type, m_poll_pid, &frame->data.u8[4], 4, m_poll_ml_remain);
+        IncomingPollReplyInternal(frame->origin, m_poll_type, m_poll_pid, &frame->data.u8[5], 3, m_poll_ml_remain);
         return;
         }
       else if (((frame->data.u8[0]>>4)==0x2)&&(m_poll_ml_remain>0))
@@ -2306,8 +2306,12 @@ void OvmsVehicle::PollerReceive(CAN_frame_t* frame)
       else if ((frame->data.u8[1] == 0x62)&&
                ((frame->data.u8[3]+(((uint16_t) frame->data.u8[2]) << 8)) == m_poll_pid))
         {
+        uint16_t len;
+        len = (uint16_t) frame->data.u8[0] - 3;
         m_poll_ml_remain = 0;
-        IncomingPollReplyInternal(frame->origin, m_poll_type, m_poll_pid, &frame->data.u8[4], 4, 0);
+        m_poll_ml_frame = 0;
+        //ESP_LOGD(TAG, "Poll ML single frame (frame=%d, remain=%d)",m_poll_ml_frame,m_poll_ml_remain);
+        IncomingPollReplyInternal(frame->origin, m_poll_type, m_poll_pid, &frame->data.u8[4], len, 0);
         }
       break;
     }
