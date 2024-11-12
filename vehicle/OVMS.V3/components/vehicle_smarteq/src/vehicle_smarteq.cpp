@@ -137,6 +137,9 @@ OvmsVehicleSmartEQ::OvmsVehicleSmartEQ() {
   mt_obl_main_amps = new OvmsMetricVector<float>("xsq.obl.amps", SM_STALE_HIGH, Amps);
   mt_obl_main_CHGpower = new OvmsMetricVector<float>("xsq.obl.power", SM_STALE_HIGH, kW);
   mt_obl_main_freq = MyMetrics.InitFloat("xsq.obl.freq", SM_STALE_MID, 0, Other);
+  
+  // standard settings
+  StdMetrics.ms_v_bat_cac->SetValue(42);
 
   RegisterCanBus(1, CAN_MODE_ACTIVE, CAN_SPEED_500KBPS);
 
@@ -281,6 +284,7 @@ void OvmsVehicleSmartEQ::IncomingFrameCan1(CAN_frame_t* p_frame) {
       break;
     case 0x646:
       mt_use_at_reset->SetValue(CAN_BYTE(1) * 0.1);
+      StandardMetrics.ms_v_charge_kwh_grid_total->SetValue(mt_use_at_reset->AsFloat()); // not the best idea at the moment
       break;
     case 0x654: // SOC(b)
       StandardMetrics.ms_v_bat_soc->SetValue(CAN_BYTE(3));
@@ -311,6 +315,7 @@ void OvmsVehicleSmartEQ::IncomingFrameCan1(CAN_frame_t* p_frame) {
           StandardMetrics.ms_v_charge_type->SetValue("type2");
           StandardMetrics.ms_v_charge_state->SetValue("charging");
           StandardMetrics.ms_v_charge_substate->SetValue("onrequest");
+          StandardMetrics.ms_v_charge_timestamp->SetValue(StdMetrics.ms_m_timeutc->AsInt());
         } else { // EVENT stopped charging
           StandardMetrics.ms_v_charge_pilot->SetValue(false);
           StandardMetrics.ms_v_charge_inprogress->SetValue(isCharging);
@@ -320,6 +325,7 @@ void OvmsVehicleSmartEQ::IncomingFrameCan1(CAN_frame_t* p_frame) {
           StandardMetrics.ms_v_charge_duration_soc->SetValue(0);
           StandardMetrics.ms_v_charge_duration_range->SetValue(0);
           StandardMetrics.ms_v_charge_power->SetValue(0);
+          StandardMetrics.ms_v_charge_timestamp->SetValue(StdMetrics.ms_m_timeutc->AsInt());
           if (StandardMetrics.ms_v_bat_soc->AsInt() < 95) {
             // Assume the charge was interrupted
             ESP_LOGI(TAG,"Car charge session was interrupted");
