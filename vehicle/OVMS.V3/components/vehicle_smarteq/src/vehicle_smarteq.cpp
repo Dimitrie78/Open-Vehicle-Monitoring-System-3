@@ -138,9 +138,6 @@ OvmsVehicleSmartEQ::OvmsVehicleSmartEQ() {
   mt_obl_main_CHGpower = new OvmsMetricVector<float>("xsq.obl.power", SM_STALE_HIGH, kW);
   mt_obl_main_freq = MyMetrics.InitFloat("xsq.obl.freq", SM_STALE_MID, 0, Other);
   
-  // standard settings
-  StdMetrics.ms_v_bat_cac->SetValue(42);
-
   RegisterCanBus(1, CAN_MODE_ACTIVE, CAN_SPEED_500KBPS);
 
   MyConfig.RegisterParam("xsq", "Smart EQ", true, true);
