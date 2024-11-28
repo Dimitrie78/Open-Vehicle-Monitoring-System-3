@@ -892,6 +892,34 @@ bool OvmsVehicleSmartEQ::SetFeature(int key, const char *value)
       MyConfig.SetParamValueBool("xsq", "resettrip",  (bits& 1)!=0);
       return true;
     }
+    case 4:
+    {
+      int bits = atoi(value);
+      char buf[10];
+      sprintf(buf, "1,%d,0,0,-1,-1,-1", bits);
+      MyConfig.SetParamValue("usr", "b.data", string(buf));
+      return true;
+    }
+    case 5:
+    {
+      int bits = atoi(value);
+      char buf[10];
+      if(bits > 959){
+        sprintf(buf, "1,1,0,%d,-1,-1,-1", bits);
+      } else {
+        sprintf(buf, "1,1,0,0%d,-1,-1,-1", bits);
+      }
+      MyConfig.SetParamValue("usr", "b.data", string(buf));
+      return true;
+    }
+    case 6:
+    {
+      int bits = atoi(value);
+      char buf[10];
+      sprintf(buf, "1,0,0,0,-1,-1,%d", bits);
+      MyConfig.SetParamValue("usr", "b.data", string(buf));
+      return true;
+    }
     case 10:
       MyConfig.SetParamValue("xsq", "suffsoc", value);
       return true;
@@ -938,6 +966,12 @@ const std::string OvmsVehicleSmartEQ::GetFeature(int key)
       sprintf(buf, "%d", bits);
       return std::string(buf);
     }
+    case 4:
+      if(MyConfig.GetParamValue("usr", "b.activated", STR(0))=="yes"){return std::string("1");}else{ return std::string("2");};
+    case 5:
+      return MyConfig.GetParamValue("usr", "b.scheduled", STR(0));
+    case 6:
+      if(MyConfig.GetParamValue("usr", "b.scheduled_2", STR(0))=="yes"){return std::string("1");}else{ return std::string("0");};
     case 10:
       return MyConfig.GetParamValue("xsq", "suffsoc", STR(0));
     case 11:
