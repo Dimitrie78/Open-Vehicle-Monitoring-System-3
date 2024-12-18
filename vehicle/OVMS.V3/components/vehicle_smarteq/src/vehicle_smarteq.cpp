@@ -158,22 +158,11 @@ OvmsVehicleSmartEQ::OvmsVehicleSmartEQ() {
     MyConfig.SetParamValueBool("network", "reboot.no.ip", false);
     MyConfig.SetParamValueBool("modem", "enable.sms", false);
     // Firmware
-    std::string vehicleid = MyConfig.GetParamValue("vehicle", "id");
-    if(vehicleid.find("ZORG"))
-    {
-      MyConfig.SetParamValue("ota", "server", "http://s418145198.online.de");
-      MyConfig.SetParamValue("ota", "tag", "smartfw");
-      MyConfig.SetParamValue("ota", "http.mru", "s418145198.online.de/v3.3/smartfw/ovms3.bin");
-      // Plugin
-      MyConfig.SetParamValue("plugin.repos", "SmartEQ", "http://s418145198.online.de/plugins/");
-    } else
-    {
-      MyConfig.SetParamValue("ota", "server", "https://ovms.dimitrie.eu/firmware/ota");
-      MyConfig.SetParamValue("ota", "tag", "smarteq");
-      MyConfig.SetParamValue("ota", "http.mru", "ovms.dimitrie.eu/firmware/ota/v3.3/smarteq/ovms3.bin");
-      // Plugin
-      MyConfig.SetParamValue("plugin.repos", "SmartEQ", "https://ovms.dimitrie.eu/plugins/");
-    }
+    MyConfig.SetParamValue("ota", "server", "https://ovms.dimitrie.eu/firmware/ota");
+    MyConfig.SetParamValue("ota", "tag", "smarteq");
+    MyConfig.SetParamValue("ota", "http.mru", "ovms.dimitrie.eu/firmware/ota/v3.3/smarteq/ovms3.bin");
+    // Plugin
+    MyConfig.SetParamValue("plugin.repos", "SmartEQ", "https://ovms.dimitrie.eu/plugins/");
     
     MyConfig.SetParamValueInt("ota", "auto.hour", 4);
     MyConfig.SetParamValueBool("ota", "auto.allow.modem", true);
