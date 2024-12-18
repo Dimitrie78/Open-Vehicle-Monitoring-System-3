@@ -625,7 +625,7 @@ void modem::State1Enter(modem_state1_t newstate)
       break;
 
     case Identify:
-      m_state1_timeout_ticks = 30;
+      m_state1_timeout_ticks = 40;
       m_state1_timeout_goto = PowerOffOn;
       break;
 
@@ -638,7 +638,7 @@ void modem::State1Enter(modem_state1_t newstate)
 
     case MuxStart:
       MyEvents.SignalEvent("system.modem.muxstart", NULL);
-      m_state1_timeout_ticks = 120;
+      m_state1_timeout_ticks = 150;
       m_state1_timeout_goto = PoweringOn;
       StartMux();
       break;
@@ -650,7 +650,7 @@ void modem::State1Enter(modem_state1_t newstate)
 
     case NetStart:
       MyEvents.SignalEvent("system.modem.netstart", NULL);
-      m_state1_timeout_ticks = 30;
+      m_state1_timeout_ticks = 45;
       m_state1_timeout_goto = PowerOffOn;
       break;
 
@@ -930,6 +930,8 @@ modem::modem_state1_t modem::State1Ticker1()
       break;
 
     case NetLoss:
+        ESP_LOGW(TAG, "NetLoss: unresolvable error, performing modem power cycle");
+        return PowerOffOn;
       break;
 
     case NetHold:
