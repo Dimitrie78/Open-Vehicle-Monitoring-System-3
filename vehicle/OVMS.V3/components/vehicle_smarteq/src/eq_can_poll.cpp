@@ -272,10 +272,11 @@ void OvmsVehicleSmartEQ::PollReply_HVAC(const char* data, uint16_t reply_len) {
 }
 
 void OvmsVehicleSmartEQ::PollReply_TDB(const char* data, uint16_t reply_len) {
-  StandardMetrics.ms_v_env_temp->SetValue( (CAN_UINT(2) - 400) * 0.1 );
+  float temp = (float) (CAN_UINT(2) - 400) * 0.1;
+  if (temp > 100.0f) temp = 1.0f;
+  StandardMetrics.ms_v_env_temp->SetValue(temp);
   if (m_ios_tpms_fix) {
-    float temp = (float) (CAN_UINT(2) - 400) * 0.1;
-    if (temp < 1.0f) temp = 1.0;
+    if (temp < 1.0f) temp = 1.0f;
     StandardMetrics.ms_v_tpms_temp->SetElemValue(MS_V_TPMS_IDX_RR, temp);
     StandardMetrics.ms_v_tpms_temp->SetElemValue(MS_V_TPMS_IDX_RL, temp);
     StandardMetrics.ms_v_tpms_temp->SetElemValue(MS_V_TPMS_IDX_FR, temp);
