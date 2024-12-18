@@ -77,7 +77,8 @@ void OvmsVehicleSmartEQ::WebDeInit()
 void OvmsVehicleSmartEQ::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
 {
   std::string error, info;
-  bool canwrite, led, ios, resettrip;
+  bool canwrite, led, ios, resettrip, resettotal, bsact, bsdbt;
+  std::string bstime;
 
   if (c.method == "POST") {
     // process form submission:
@@ -85,6 +86,26 @@ void OvmsVehicleSmartEQ::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
     led  = (c.getvar("led") == "yes");
     ios  = (c.getvar("ios") == "yes");
     resettrip  = (c.getvar("resettrip") == "yes");
+    resettotal  =  (c.getvar("resettotal") == "yes");
+    bsact  =  (c.getvar("bsact") == "yes");
+    bsdbt  =  (c.getvar("bsdbt") == "yes");
+    bstime  =  (c.getvar("bstime"));
+    int bsactint = 0;
+    int bsdbtint = -1;
+    if(bsact){bsactint = 1;}else{bsactint = 2;};
+    if(bsdbt){bsdbtint = 1;}else{bsdbtint = 0;};
+    int bstimeint = atoi(bstime.c_str());
+    char buf[10];
+    if(bstimeint > 959){
+      sprintf(buf, "1,%d,0,%d,-1,-1,%d",bsactint , bstimeint, bsdbtint);
+    } else if((bstimeint < 960)&&(bstimeint > 59)){
+      sprintf(buf, "1,%d,0,0%d,-1,-1,%d",bsactint , bstimeint, bsdbtint);
+    } else if((bstimeint < 60)&&(bstimeint > 9)){
+      sprintf(buf, "1,%d,0,00%d,-1,-1,%d",bsactint , bstimeint, bsdbtint);
+    } else {
+      sprintf(buf, "1,%d,0,000%d,-1,-1,%d",bsactint , bstimeint, bsdbtint);
+    }
+      
 
     if (error == "") {
       // success:
@@ -92,6 +113,8 @@ void OvmsVehicleSmartEQ::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
       MyConfig.SetParamValueBool("xsq", "led", led);
       MyConfig.SetParamValueBool("xsq", "ios_tpms_fix", ios);
       MyConfig.SetParamValueBool("xsq", "resettrip", resettrip);
+      MyConfig.SetParamValueBool("xsq", "resettotal", resettotal);
+      MyConfig.SetParamValue("usr", "b.data", string(buf));
 
       info = "<p class=\"lead\">Success!</p><ul class=\"infolist\">" + info + "</ul>";
       c.head(200);
@@ -112,11 +135,15 @@ void OvmsVehicleSmartEQ::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
     led  = MyConfig.GetParamValueBool("xsq", "led", false);
     ios  = MyConfig.GetParamValueBool("xsq", "ios_tpms_fix", false);
     resettrip  = MyConfig.GetParamValueBool("xsq", "resettrip", false);
+    resettotal  = MyConfig.GetParamValueBool("xsq", "resettotal", false);
+    bsact  =  MyConfig.GetParamValueBool("usr", "b.activated", false);
+    bsdbt  =  MyConfig.GetParamValueBool("usr", "b.scheduled_2", false);
+    bstime  =  MyConfig.GetParamValue("usr", "b.scheduled", "0515");
     c.head(200);
   }
 
   // generate form:
-  c.panel_start("primary", "Smart ED feature configuration");
+  c.panel_start("primary", "smart EQ feature configuration");
   c.form_start(p.uri);
   
   c.input_checkbox("Enable CAN write(Poll)", "canwrite", canwrite,
@@ -125,8 +152,19 @@ void OvmsVehicleSmartEQ::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
     "<p>RED=Internet no, BLUE=Internet yes, GREEN=Server v2 connected.<br>EGPIO Port 7,8,9 are used</p>");
   c.input_checkbox("Enable IOS TPMS fix", "ios", ios,
     "<p>Set External Temp to TPMS Temps to Display Tire Pressurs in IOS</p>");
+  c.fieldset_start("Trip (Car site) and long term kWh/100km");
+  // trip reset
   c.input_checkbox("Enable Reset Trip when Charging", "resettrip", resettrip,
     "<p>Enable = Reset Trip Values when Chaging, Disable = Reset Trip Values when Driving</p>");
+  c.input_checkbox("Enable Reset kWh/100km when Car switched on", "resettotal", resettotal,
+    "<p>Enable = Reset kWh/100km Values when Car switched on, auto Disabled when reseted</p>");
+  // scheduled_booster plugin
+  c.fieldset_start("Climate/Heater start timer");
+  c.input_checkbox("Enable Climate/Heater at time", "bsact", bsact,
+    "<p>Enable = start Climate/Heater at time</p>");
+  c.input_checkbox("Enable two time activation Climate/Heater", "bsdbt", bsdbt,
+    "<p>Enable = this option adds a 2nd Climate/Heater start </p>");
+  c.input_text("time: ", "bstime", bstime.c_str(), "0515","<p>Time: 5:15 = 515 or 15:30 = 1530</p>");
 
   c.print("<hr>");
   c.input_button("default", "Save");
