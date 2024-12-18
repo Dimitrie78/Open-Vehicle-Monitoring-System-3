@@ -104,47 +104,82 @@ OvmsVehicleSmartEQ::OvmsVehicleSmartEQ() {
   BmsSetCellDefaultThresholdsVoltage(0.020, 0.030);
   BmsSetCellDefaultThresholdsTemperature(2.0, 3.0);
 
-  mt_bms_temps = new OvmsMetricVector<float>("xsq.v.bms.temps", SM_STALE_HIGH, Celcius);
-  mt_bus_awake = MyMetrics.InitBool("xsq.v.bus.awake", SM_STALE_MIN, false);
-  mt_use_at_reset = MyMetrics.InitFloat("xsq.use.at.reset", SM_STALE_MID, 0, kWh);
+  mt_bms_temps                  = new OvmsMetricVector<float>("xsq.v.bms.temps", SM_STALE_HIGH, Celcius);
+  mt_bus_awake                  = MyMetrics.InitBool("xsq.v.bus.awake", SM_STALE_MIN, false);
+  mt_use_at_reset               = MyMetrics.InitFloat("xsq.use.at.reset", SM_STALE_MID, 0, kWh);
 
-  mt_pos_odometer_start = MyMetrics.InitFloat("xsq.odometer.start", SM_STALE_MID, 0, Kilometers);
+  mt_pos_odometer_start         = MyMetrics.InitFloat("xsq.odometer.start", SM_STALE_MID, 0, Kilometers);
+  mt_pos_odometer_start_total   = MyMetrics.InitFloat("xsq.odometer.start.total", SM_STALE_MID, 0, Kilometers);
+  mt_pos_odometer_trip_total    = MyMetrics.InitFloat("xsq.odometer.trip.total", SM_STALE_MID, 0, Kilometers);
 
-  mt_evc_hv_energy = MyMetrics.InitFloat("xsq.evc.hv.energy", SM_STALE_MID, 0, kWh);
-  mt_evc_LV_DCDC_amps = MyMetrics.InitFloat("xsq.evc.lv.dcdc.amps", SM_STALE_MID, 0, Amps);
-  mt_evc_LV_DCDC_load = MyMetrics.InitFloat("xsq.evc.lv.dcdc.load", SM_STALE_MID, 0, Percentage);
-  mt_evc_LV_DCDC_power = MyMetrics.InitFloat("xsq.evc.lv.dcdc.power", SM_STALE_MID, 0, Watts);
-  mt_evc_LV_DCDC_state = MyMetrics.InitInt("xsq.evc.lv.dcdc.state", SM_STALE_MID, 0, Other);
+  mt_evc_hv_energy              = MyMetrics.InitFloat("xsq.evc.hv.energy", SM_STALE_MID, 0, kWh);
+  mt_evc_LV_DCDC_amps           = MyMetrics.InitFloat("xsq.evc.lv.dcdc.amps", SM_STALE_MID, 0, Amps);
+  mt_evc_LV_DCDC_load           = MyMetrics.InitFloat("xsq.evc.lv.dcdc.load", SM_STALE_MID, 0, Percentage);
+  mt_evc_LV_DCDC_power          = MyMetrics.InitFloat("xsq.evc.lv.dcdc.power", SM_STALE_MID, 0, Watts);
+  mt_evc_LV_DCDC_state          = MyMetrics.InitInt("xsq.evc.lv.dcdc.state", SM_STALE_MID, 0, Other);
 
-  mt_bms_CV_Range_min = MyMetrics.InitFloat("xsq.bms.cv.range.min", SM_STALE_MID, 0, Volts);
-  mt_bms_CV_Range_max = MyMetrics.InitFloat("xsq.bms.cv.range.max", SM_STALE_MID, 0, Volts);
-  mt_bms_CV_Range_mean = MyMetrics.InitFloat("xsq.bms.cv.range.mean", SM_STALE_MID, 0, Volts);
-  mt_bms_BattLinkVoltage = MyMetrics.InitFloat("xsq.bms.batt.link.voltage", SM_STALE_MID, 0, Volts);
-  mt_bms_BattCV_Sum = MyMetrics.InitFloat("xsq.bms.batt.cv.sum", SM_STALE_MID, 0, Volts);
-  mt_bms_BattPower_voltage = MyMetrics.InitFloat("xsq.bms.batt.voltage", SM_STALE_MID, 0, Volts);
-  mt_bms_BattPower_current = MyMetrics.InitFloat("xsq.bms.batt.current", SM_STALE_MID, 0, Amps);
-  mt_bms_BattPower_power = MyMetrics.InitFloat("xsq.bms.batt.power", SM_STALE_MID, 0, kW);
-  mt_bms_HVcontactState = MyMetrics.InitInt("xsq.bms.hv.contact.state", SM_STALE_MID, 0, Other);
-  mt_bms_HV = MyMetrics.InitFloat("xsq.bms.hv", SM_STALE_MID, 0, Volts);
-  mt_bms_EVmode = MyMetrics.InitInt("xsq.bms.ev.mode", SM_STALE_MID, 0, Other);
-  mt_bms_LV = MyMetrics.InitFloat("xsq.bms.lv", SM_STALE_MID, 0, Volts);
-  mt_bms_Amps = MyMetrics.InitFloat("xsq.bms.amps", SM_STALE_MID, 0, Amps);
-  mt_bms_Amps2 = MyMetrics.InitFloat("xsq.bms.amp2", SM_STALE_MID, 0, Amps);
-  mt_bms_Power = MyMetrics.InitFloat("xsq.bms.power", SM_STALE_MID, 0, kW);
+  mt_bms_CV_Range_min           = MyMetrics.InitFloat("xsq.bms.cv.range.min", SM_STALE_MID, 0, Volts);
+  mt_bms_CV_Range_max           = MyMetrics.InitFloat("xsq.bms.cv.range.max", SM_STALE_MID, 0, Volts);
+  mt_bms_CV_Range_mean          = MyMetrics.InitFloat("xsq.bms.cv.range.mean", SM_STALE_MID, 0, Volts);
+  mt_bms_BattLinkVoltage        = MyMetrics.InitFloat("xsq.bms.batt.link.voltage", SM_STALE_MID, 0, Volts);
+  mt_bms_BattCV_Sum             = MyMetrics.InitFloat("xsq.bms.batt.cv.sum", SM_STALE_MID, 0, Volts);
+  mt_bms_BattPower_voltage      = MyMetrics.InitFloat("xsq.bms.batt.voltage", SM_STALE_MID, 0, Volts);
+  mt_bms_BattPower_current      = MyMetrics.InitFloat("xsq.bms.batt.current", SM_STALE_MID, 0, Amps);
+  mt_bms_BattPower_power        = MyMetrics.InitFloat("xsq.bms.batt.power", SM_STALE_MID, 0, kW);
+  mt_bms_HVcontactState         = MyMetrics.InitInt("xsq.bms.hv.contact.state", SM_STALE_MID, 0, Other);
+  mt_bms_HV                     = MyMetrics.InitFloat("xsq.bms.hv", SM_STALE_MID, 0, Volts);
+  mt_bms_EVmode                 = MyMetrics.InitInt("xsq.bms.ev.mode", SM_STALE_MID, 0, Other);
+  mt_bms_LV                     = MyMetrics.InitFloat("xsq.bms.lv", SM_STALE_MID, 0, Volts);
+  mt_bms_Amps                   = MyMetrics.InitFloat("xsq.bms.amps", SM_STALE_MID, 0, Amps);
+  mt_bms_Amps2                  = MyMetrics.InitFloat("xsq.bms.amp2", SM_STALE_MID, 0, Amps);
+  mt_bms_Power                  = MyMetrics.InitFloat("xsq.bms.power", SM_STALE_MID, 0, kW);
 
-  mt_obl_fastchg = MyMetrics.InitBool("xsq.obl.fastchg", SM_STALE_MIN, false);
-  mt_obl_main_volts = new OvmsMetricVector<float>("xsq.obl.volts", SM_STALE_HIGH, Volts);
-  mt_obl_main_amps = new OvmsMetricVector<float>("xsq.obl.amps", SM_STALE_HIGH, Amps);
-  mt_obl_main_CHGpower = new OvmsMetricVector<float>("xsq.obl.power", SM_STALE_HIGH, kW);
-  mt_obl_main_freq = MyMetrics.InitFloat("xsq.obl.freq", SM_STALE_MID, 0, Other);
+  mt_obl_fastchg                = MyMetrics.InitBool("xsq.obl.fastchg", SM_STALE_MIN, false);
+  mt_obl_main_volts             = new OvmsMetricVector<float>("xsq.obl.volts", SM_STALE_HIGH, Volts);
+  mt_obl_main_amps              = new OvmsMetricVector<float>("xsq.obl.amps", SM_STALE_HIGH, Amps);
+  mt_obl_main_CHGpower          = new OvmsMetricVector<float>("xsq.obl.power", SM_STALE_HIGH, kW);
+  mt_obl_main_freq              = MyMetrics.InitFloat("xsq.obl.freq", SM_STALE_MID, 0, Other);
   
-  // standard settings
-  StdMetrics.ms_v_bat_cac->SetValue(42);
-
   RegisterCanBus(1, CAN_MODE_ACTIVE, CAN_SPEED_500KBPS);
 
   MyConfig.RegisterParam("xsq", "Smart EQ", true, true);
   ConfigChanged(NULL);
+
+  if (MyConfig.GetParamValueInt("module", "cfgversion") < 2024121101) 
+  {
+    MyConfig.SetParamValueFloat("network", "modem.sq.bad", -98.0);
+    MyConfig.SetParamValueFloat("network", "modem.sq.good", -95.0);
+    MyConfig.SetParamValueFloat("network", "wifi.sq.bad", -90.0);
+    MyConfig.SetParamValueFloat("network", "wifi.sq.good", -88.0);
+    MyConfig.SetParamValueInt("network", "wifi.scan.tmin", 160);
+    MyConfig.SetParamValueInt("network", "wifi.scan.tmax", 250);
+    MyConfig.SetParamValueInt("network", "wifi.ap.bw", 20);
+    MyConfig.SetParamValueBool("network", "wifi.bad.reconnect", false);
+    MyConfig.SetParamValueBool("network", "reboot.no.ip", false);
+    MyConfig.SetParamValueBool("modem", "enable.sms", false);
+    // Firmware
+    std::string vehicleid = MyConfig.GetParamValue("vehicle", "id");
+    if(vehicleid.find("ZORG"))
+    {
+      MyConfig.SetParamValue("ota", "server", "http://s418145198.online.de");
+      MyConfig.SetParamValue("ota", "tag", "smartfw");
+      MyConfig.SetParamValue("ota", "http.mru", "s418145198.online.de/v3.3/smartfw/ovms3.bin");
+      // Plugin
+      MyConfig.SetParamValue("plugin.repos", "SmartEQ", "http://s418145198.online.de/plugins/");
+    } else
+    {
+      MyConfig.SetParamValue("ota", "server", "https://ovms.dimitrie.eu/firmware/ota");
+      MyConfig.SetParamValue("ota", "tag", "smarteq");
+      MyConfig.SetParamValue("ota", "http.mru", "ovms.dimitrie.eu/firmware/ota/v3.3/smarteq/ovms3.bin");
+      // Plugin
+      MyConfig.SetParamValue("plugin.repos", "SmartEQ", "https://ovms.dimitrie.eu/plugins/");
+    }
+    
+    MyConfig.SetParamValueInt("ota", "auto.hour", 4);
+    MyConfig.SetParamValueBool("ota", "auto.allow.modem", true);
+    MyConfig.SetParamValueBool("auto", "ota", false);
+    MyConfig.SetParamValueInt("module", "cfgversion", 2024121101);
+  }
 
 #ifdef CONFIG_OVMS_COMP_WEBSERVER
   WebInit();
@@ -211,6 +246,7 @@ void OvmsVehicleSmartEQ::ConfigChanged(OvmsConfigParam* param) {
   m_enable_LED_state = MyConfig.GetParamValueBool("xsq", "led", false);
   m_ios_tpms_fix = MyConfig.GetParamValueBool("xsq", "ios_tpms_fix", false);
   m_resettrip = MyConfig.GetParamValueBool("xsq", "resettrip", false);
+  m_resettotal = MyConfig.GetParamValueBool("xsq", "resettotal", false);
 #ifdef CONFIG_OVMS_COMP_MAX7317
   if (!m_enable_LED_state) {
     MyPeripherals->m_max7317->Output(9, 1);
@@ -284,7 +320,7 @@ void OvmsVehicleSmartEQ::IncomingFrameCan1(CAN_frame_t* p_frame) {
       break;
     case 0x646:
       mt_use_at_reset->SetValue(CAN_BYTE(1) * 0.1);
-      StandardMetrics.ms_v_charge_kwh_grid_total->SetValue(mt_use_at_reset->AsFloat()); // not the best idea at the moment
+      //StandardMetrics.ms_v_charge_kwh_grid_total->SetValue(mt_use_at_reset->AsFloat()); // not the best idea at the moment
       break;
     case 0x654: // SOC(b)
       StandardMetrics.ms_v_bat_soc->SetValue(CAN_BYTE(3));
@@ -315,7 +351,7 @@ void OvmsVehicleSmartEQ::IncomingFrameCan1(CAN_frame_t* p_frame) {
           StandardMetrics.ms_v_charge_type->SetValue("type2");
           StandardMetrics.ms_v_charge_state->SetValue("charging");
           StandardMetrics.ms_v_charge_substate->SetValue("onrequest");
-          StandardMetrics.ms_v_charge_timestamp->SetValue(StdMetrics.ms_m_timeutc->AsInt());
+          StandardMetrics.ms_v_charge_timestamp->SetValue(StandardMetrics.ms_m_timeutc->AsInt());
         } else { // EVENT stopped charging
           StandardMetrics.ms_v_charge_pilot->SetValue(false);
           StandardMetrics.ms_v_charge_inprogress->SetValue(isCharging);
@@ -325,7 +361,7 @@ void OvmsVehicleSmartEQ::IncomingFrameCan1(CAN_frame_t* p_frame) {
           StandardMetrics.ms_v_charge_duration_soc->SetValue(0);
           StandardMetrics.ms_v_charge_duration_range->SetValue(0);
           StandardMetrics.ms_v_charge_power->SetValue(0);
-          StandardMetrics.ms_v_charge_timestamp->SetValue(StdMetrics.ms_m_timeutc->AsInt());
+          StandardMetrics.ms_v_charge_timestamp->SetValue(StandardMetrics.ms_m_timeutc->AsInt());
           if (StandardMetrics.ms_v_bat_soc->AsInt() < 95) {
             // Assume the charge was interrupted
             ESP_LOGI(TAG,"Car charge session was interrupted");
@@ -371,6 +407,16 @@ void OvmsVehicleSmartEQ::ResetTripCounters() {
   StandardMetrics.ms_v_bat_energy_used->SetValue(0);
   mt_pos_odometer_start->SetValue(StandardMetrics.ms_v_pos_odometer->AsFloat());
   StandardMetrics.ms_v_pos_trip->SetValue(0);
+  StandardMetrics.ms_v_charge_kwh_grid->SetValue(0);
+}
+
+void OvmsVehicleSmartEQ::ResetTotalCounters() {
+  StandardMetrics.ms_v_bat_energy_recd_total->SetValue(0);
+  StandardMetrics.ms_v_bat_energy_used_total->SetValue(0);
+  mt_pos_odometer_trip_total->SetValue(0);
+  mt_pos_odometer_start_total->SetValue(StandardMetrics.ms_v_pos_odometer->AsFloat());
+  StandardMetrics.ms_v_charge_kwh_grid_total->SetValue(0);
+  MyConfig.SetParamValueBool("xsq", "resettotal", false);
 }
 
 /**
@@ -388,10 +434,13 @@ void OvmsVehicleSmartEQ::HandleEnergy() {
   if (power != 0.0 && StandardMetrics.ms_v_env_on->AsBool()) {
     // Update energy used and recovered
     float energy = power / 3600.0;    // 1 second worth of energy in kwh's
-    if (energy < 0.0f)
+    if (energy < 0.0f){
       StandardMetrics.ms_v_bat_energy_used->SetValue( StandardMetrics.ms_v_bat_energy_used->AsFloat() - energy);
-    else // (energy > 0.0f)
+      StandardMetrics.ms_v_bat_energy_used_total->SetValue( StandardMetrics.ms_v_bat_energy_used_total->AsFloat() - energy);
+    }else{ // (energy > 0.0f)
       StandardMetrics.ms_v_bat_energy_recd->SetValue( StandardMetrics.ms_v_bat_energy_recd->AsFloat() + energy);
+      StandardMetrics.ms_v_bat_energy_recd_total->SetValue( StandardMetrics.ms_v_bat_energy_recd_total->AsFloat() + energy);
+    }
   }
 }
 
@@ -511,10 +560,14 @@ void OvmsVehicleSmartEQ::HandlePollState() {
 }
 
 void OvmsVehicleSmartEQ::CalculateEfficiency() {
-  float consumption = 0;
-  if (StdMetrics.ms_v_pos_speed->AsFloat() >= 5)
-    consumption = ABS(StdMetrics.ms_v_bat_power->AsFloat(0, Watts)) / StdMetrics.ms_v_pos_speed->AsFloat();
-  StdMetrics.ms_v_bat_consumption->SetValue((StdMetrics.ms_v_bat_consumption->AsFloat() * 4 + consumption) / 5);
+  // float consumption = 0;
+  if (StandardMetrics.ms_v_pos_speed->AsFloat() >= 5) {
+    //consumption = ABS(StandardMetrics.ms_v_bat_power->AsFloat(0, Watts)) / StandardMetrics.ms_v_pos_speed->AsFloat();
+    //StandardMetrics.ms_v_bat_consumption->SetValue((StandardMetrics.ms_v_bat_consumption->AsFloat() * 4 + consumption) / 5);
+    StandardMetrics.ms_v_charge_kwh_grid->SetValue(((StandardMetrics.ms_v_bat_energy_used->AsFloat() - StandardMetrics.ms_v_bat_energy_recd->AsFloat()) / StandardMetrics.ms_v_pos_trip->AsFloat()) * 100.0);
+    StandardMetrics.ms_v_charge_kwh_grid_total->SetValue(((StandardMetrics.ms_v_bat_energy_used_total->AsFloat() - StandardMetrics.ms_v_bat_energy_recd_total->AsFloat()) / mt_pos_odometer_trip_total->AsFloat()) * 100.0);
+    StandardMetrics.ms_v_bat_consumption->SetValue(mt_use_at_reset->AsFloat() * 10.0);
+  }
 }
 
 void OvmsVehicleSmartEQ::OnlineState() {
@@ -568,6 +621,10 @@ void OvmsVehicleSmartEQ::vehicle_smart_car_on(bool isOn) {
     if (!m_resettrip) {
       ResetTripCounters();
     }
+    // Reset kWh/100km values
+    if (m_resettotal) {
+      ResetTotalCounters();
+    }
   }
   else if (!isOn && StandardMetrics.ms_v_env_on->AsBool()) {
     // Log once that car is being turned off
@@ -604,6 +661,13 @@ void OvmsVehicleSmartEQ::Ticker1(uint32_t ticker) {
   }
   if (StandardMetrics.ms_v_env_on->AsBool() && StandardMetrics.ms_v_pos_odometer->AsFloat(0) > 0.0 && mt_pos_odometer_start->AsFloat(0) > 0.0) {
     StandardMetrics.ms_v_pos_trip->SetValue(StandardMetrics.ms_v_pos_odometer->AsFloat(0) - mt_pos_odometer_start->AsFloat(0));
+  }
+
+  if (mt_pos_odometer_start_total->AsFloat(0) == 0 && StandardMetrics.ms_v_pos_odometer->AsFloat(0) > 0.0) {
+    mt_pos_odometer_start_total->SetValue(StandardMetrics.ms_v_pos_odometer->AsFloat());
+  }
+  if (StandardMetrics.ms_v_env_on->AsBool() && StandardMetrics.ms_v_pos_odometer->AsFloat(0) > 0.0 && mt_pos_odometer_start_total->AsFloat(0) > 0.0) {
+    mt_pos_odometer_trip_total->SetValue(StandardMetrics.ms_v_pos_odometer->AsFloat(0) - mt_pos_odometer_start_total->AsFloat(0));
   }
 
   if (StandardMetrics.ms_v_door_chargeport->AsBool() && !m_charge_start) {
@@ -681,8 +745,14 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::CommandHomelink(int button, i
   if (button == 0) {
     res = CommandClimateControl(true);
   }
-  else if (button == 1) {
-    res = CommandClimateControl(false);
+  if (button == 1) {
+    // res = CommandClimateControl(false); // not work on EQ
+    MyPeripherals->m_esp32wifi->Restart();
+    res = Success;
+  }
+  if (button == 2) {
+    MyPeripherals->m_cellular_modem->Restart();
+    res = Success;
   }
 
   // fallback to default implementation?
@@ -726,11 +796,11 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::CommandWakeup() {
 
 OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::CommandStat(int verbosity, OvmsWriter* writer) {
 
-  bool chargeport_open = StdMetrics.ms_v_door_chargeport->AsBool();
-  std::string charge_state = StdMetrics.ms_v_charge_state->AsString();
+  bool chargeport_open = StandardMetrics.ms_v_door_chargeport->AsBool();
+  std::string charge_state = StandardMetrics.ms_v_charge_state->AsString();
   if (chargeport_open && charge_state != "")
     {
-    std::string charge_mode = StdMetrics.ms_v_charge_mode->AsString();
+    std::string charge_mode = StandardMetrics.ms_v_charge_mode->AsString();
     bool show_details = !(charge_state == "done" || charge_state == "stopped");
 
     // Translate mode codes:
@@ -766,18 +836,18 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::CommandStat(int verbosity, Ov
     if (show_details)
       {
       // Voltage & current:
-      bool show_vc = (StdMetrics.ms_v_charge_voltage->AsFloat() > 0 || StdMetrics.ms_v_charge_current->AsFloat() > 0);
+      bool show_vc = (StandardMetrics.ms_v_charge_voltage->AsFloat() > 0 || StandardMetrics.ms_v_charge_current->AsFloat() > 0);
       if (show_vc)
         {
         writer->printf("%s/%s ",
-          (char*) StdMetrics.ms_v_charge_voltage->AsUnitString("-", Native, 1).c_str(),
-          (char*) StdMetrics.ms_v_charge_current->AsUnitString("-", Native, 1).c_str());
+          (char*) StandardMetrics.ms_v_charge_voltage->AsUnitString("-", Native, 1).c_str(),
+          (char*) StandardMetrics.ms_v_charge_current->AsUnitString("-", Native, 1).c_str());
         }
 
       // Charge speed:
-      if (StdMetrics.ms_v_bat_range_speed->IsDefined() && StdMetrics.ms_v_bat_range_speed->AsFloat() != 0)
+      if (StandardMetrics.ms_v_bat_range_speed->IsDefined() && StandardMetrics.ms_v_bat_range_speed->AsFloat() != 0)
         {
-        writer->printf("%s\n", StdMetrics.ms_v_bat_range_speed->AsUnitString("-", ToUser, 1).c_str());
+        writer->printf("%s\n", StandardMetrics.ms_v_bat_range_speed->AsUnitString("-", ToUser, 1).c_str());
         }
       else if (show_vc)
         {
@@ -785,33 +855,33 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::CommandStat(int verbosity, Ov
         }
 
       // Estimated time(s) remaining:
-      int duration_full = StdMetrics.ms_v_charge_duration_full->AsInt();
+      int duration_full = StandardMetrics.ms_v_charge_duration_full->AsInt();
       if (duration_full > 0)
         writer->printf("Full: %d:%02dh\n", duration_full / 60, duration_full % 60);
 
-      int duration_soc = StdMetrics.ms_v_charge_duration_soc->AsInt();
+      int duration_soc = StandardMetrics.ms_v_charge_duration_soc->AsInt();
       if (duration_soc > 0)
         writer->printf("%s: %d:%02dh\n",
-          (char*) StdMetrics.ms_v_charge_limit_soc->AsUnitString("SOC", ToUser, 0).c_str(),
+          (char*) StandardMetrics.ms_v_charge_limit_soc->AsUnitString("SOC", ToUser, 0).c_str(),
           duration_soc / 60, duration_soc % 60);
 
-      int duration_range = StdMetrics.ms_v_charge_duration_range->AsInt();
+      int duration_range = StandardMetrics.ms_v_charge_duration_range->AsInt();
       if (duration_range > 0)
         writer->printf("%s: %d:%02dh\n",
-          (char*) StdMetrics.ms_v_charge_limit_range->AsUnitString("Range", ToUser, 0).c_str(),
+          (char*) StandardMetrics.ms_v_charge_limit_range->AsUnitString("Range", ToUser, 0).c_str(),
           duration_range / 60, duration_range % 60);
       }
 
     // Energy sums:
-    if (StdMetrics.ms_v_charge_kwh_grid->IsDefined())
+    if (StandardMetrics.ms_v_charge_kwh_grid->IsDefined())
       {
       writer->printf("Drawn: %s\n",
-        StdMetrics.ms_v_charge_kwh_grid->AsUnitString("-", ToUser, 1).c_str());
+        StandardMetrics.ms_v_charge_kwh_grid->AsUnitString("-", ToUser, 1).c_str());
       }
-    if (StdMetrics.ms_v_charge_kwh->IsDefined())
+    if (StandardMetrics.ms_v_charge_kwh->IsDefined())
       {
       writer->printf("Charged: %s\n",
-        StdMetrics.ms_v_charge_kwh->AsUnitString("-", ToUser, 1).c_str());
+        StandardMetrics.ms_v_charge_kwh->AsUnitString("-", ToUser, 1).c_str());
       }
     }
   else
@@ -819,35 +889,35 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::CommandStat(int verbosity, Ov
     writer->puts("Not charging");
     }
 
-  writer->printf("SOC: %s\n", (char*) StdMetrics.ms_v_bat_soc->AsUnitString("-", ToUser, 1).c_str());
+  writer->printf("SOC: %s\n", (char*) StandardMetrics.ms_v_bat_soc->AsUnitString("-", ToUser, 1).c_str());
 
-  if (StdMetrics.ms_v_bat_range_ideal->IsDefined())
+  if (StandardMetrics.ms_v_bat_range_ideal->IsDefined())
     {
-    const std::string& range_ideal = StdMetrics.ms_v_bat_range_ideal->AsUnitString("-", ToUser, 0);
+    const std::string& range_ideal = StandardMetrics.ms_v_bat_range_ideal->AsUnitString("-", ToUser, 0);
     writer->printf("Ideal range: %s\n", range_ideal.c_str());
     }
 
-  if (StdMetrics.ms_v_bat_range_est->IsDefined())
+  if (StandardMetrics.ms_v_bat_range_est->IsDefined())
     {
-    const std::string& range_est = StdMetrics.ms_v_bat_range_est->AsUnitString("-", ToUser, 0);
+    const std::string& range_est = StandardMetrics.ms_v_bat_range_est->AsUnitString("-", ToUser, 0);
     writer->printf("Est. range: %s\n", range_est.c_str());
     }
 
-  if (StdMetrics.ms_v_pos_odometer->IsDefined())
+  if (StandardMetrics.ms_v_pos_odometer->IsDefined())
     {
-    const std::string& odometer = StdMetrics.ms_v_pos_odometer->AsUnitString("-", ToUser, 1);
+    const std::string& odometer = StandardMetrics.ms_v_pos_odometer->AsUnitString("-", ToUser, 1);
     writer->printf("ODO: %s\n", odometer.c_str());
     }
 
-  if (StdMetrics.ms_v_bat_cac->IsDefined())
+  if (StandardMetrics.ms_v_bat_cac->IsDefined())
     {
-    const std::string& cac = StdMetrics.ms_v_bat_cac->AsUnitString("-", ToUser, 1);
+    const std::string& cac = StandardMetrics.ms_v_bat_cac->AsUnitString("-", ToUser, 1);
     writer->printf("CAC: %s\n", cac.c_str());
     }
 
-  if (StdMetrics.ms_v_bat_soh->IsDefined())
+  if (StandardMetrics.ms_v_bat_soh->IsDefined())
     {
-    const std::string& soh = StdMetrics.ms_v_bat_soh->AsUnitString("-", ToUser, 0);
+    const std::string& soh = StandardMetrics.ms_v_bat_soh->AsUnitString("-", ToUser, 0);
     writer->printf("SOH: %s\n", soh.c_str());
     }
 
@@ -909,6 +979,15 @@ bool OvmsVehicleSmartEQ::SetFeature(int key, const char *value)
       } else {
         sprintf(buf, "1,1,0,0%d,-1,-1,-1", bits);
       }
+      if(bits > 959){
+        sprintf(buf, "1,1,0,%d,-1,-1,-1", bits);
+      } else if((bits < 960)&&(bits > 59)){
+        sprintf(buf, "1,1,0,0%d,-1,-1,-1", bits);
+      } else if((bits < 60)&&(bits > 9)){
+        sprintf(buf, "1,1,0,00%d,-1,-1,-1", bits);
+      } else {
+        sprintf(buf, "1,1,0,000%d,-1,-1,-1", bits);
+      }
       MyConfig.SetParamValue("usr", "b.data", string(buf));
       return true;
     }
@@ -918,6 +997,12 @@ bool OvmsVehicleSmartEQ::SetFeature(int key, const char *value)
       char buf[10];
       sprintf(buf, "1,0,0,0,-1,-1,%d", bits);
       MyConfig.SetParamValue("usr", "b.data", string(buf));
+      return true;
+    }
+    case 7:
+    {
+      int bits = atoi(value);
+      MyConfig.SetParamValueBool("xsq", "resettotal",  (bits& 1)!=0);
       return true;
     }
     case 10:
@@ -972,6 +1057,13 @@ const std::string OvmsVehicleSmartEQ::GetFeature(int key)
       return MyConfig.GetParamValue("usr", "b.scheduled", STR(0));
     case 6:
       if(MyConfig.GetParamValue("usr", "b.scheduled_2", STR(0))=="yes"){return std::string("1");}else{ return std::string("0");};
+    case 7:
+    {
+      int bits = ( MyConfig.GetParamValueBool("xsq", "resettotal",  false) ?  1 : 0);
+      char buf[4];
+      sprintf(buf, "%d", bits);
+      return std::string(buf);
+    }
     case 10:
       return MyConfig.GetParamValue("xsq", "suffsoc", STR(0));
     case 11:
