@@ -160,11 +160,11 @@ static void GsmPPPOS_StatusCallback(ppp_pcb *pcb, int err_code, void *ctx)
     MyEvents.SignalEvent("system.modem.down",NULL);
     }
 
-  // Try to reconnect in 30 seconds. This is assuming the modem level
+  // Try to reconnect in 60 seconds. This is assuming the modem level
   // data channel is still open.
-  ESP_LOGI(TAG, "Attempting PPP reconnecting in 30 seconds...");
+  ESP_LOGI(TAG, "Attempting PPP reconnecting in 60 seconds...");
   // Note: We are in tiT task context here so use ppp_connect not pppapi_connect.
-  ppp_connect(pcb, 30);
+  ppp_connect(pcb, 60);
   }
 
 GsmPPPOS::GsmPPPOS(GsmMux* mux, int channel)
