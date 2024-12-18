@@ -79,8 +79,9 @@ class OvmsVehicleSmartEQ : public OvmsVehicle
     void ObdModifyPoll();
     void ResetChargingValues();
     void ResetTripCounters();
+    void ResetTotalCounters();
 
-  public:
+public:
     vehicle_command_t CommandClimateControl(bool enable) override;
     vehicle_command_t CommandHomelink(int button, int durationms=1000) override;
     vehicle_command_t CommandWakeup() override;
@@ -135,6 +136,7 @@ class OvmsVehicleSmartEQ : public OvmsVehicle
     bool m_enable_LED_state;                // Online LED State
     bool m_ios_tpms_fix;                    // IOS TPMS Display Fix
     bool m_resettrip;                       // Reset Trip Values when Charging/Driving
+    bool m_resettotal;                      // Reset kWh/100km Values when Driving
 
     #define DEFAULT_BATTERY_CAPACITY 17600
     #define MAX_POLL_DATA_LEN 126
@@ -148,7 +150,9 @@ class OvmsVehicleSmartEQ : public OvmsVehicle
     OvmsMetricVector<float> *mt_bms_temps;              // BMS temperatures
     OvmsMetricBool          *mt_bus_awake;              // Can Bus active
     OvmsMetricFloat         *mt_use_at_reset;           // kWh use at reset in Display
-    OvmsMetricFloat         *mt_pos_odometer_start;     // kWh use at reset in Display
+    OvmsMetricFloat         *mt_pos_odometer_start;     // remind odometer start
+    OvmsMetricFloat         *mt_pos_odometer_start_total;     // remind odometer start for kWh/100km
+    OvmsMetricFloat         *mt_pos_odometer_trip_total;// counted km for kWh/100km
     OvmsMetricBool          *mt_obl_fastchg;            // ODOmeter at Start
     OvmsMetricFloat         *mt_evc_hv_energy;          //!< available energy in kWh
     OvmsMetricFloat         *mt_evc_LV_DCDC_amps;       //!< current of DC/DC LV system, not 12V battery!
