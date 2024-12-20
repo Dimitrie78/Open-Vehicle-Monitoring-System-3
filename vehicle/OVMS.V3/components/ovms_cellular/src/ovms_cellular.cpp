@@ -288,7 +288,7 @@ modem::modem(const char* name, uart_port_t uartnum, int baud, int rxpin, int txp
   m_state1_ticker = 0;
   m_state1_timeout_goto = None;
   m_state1_timeout_ticks = -1;
-  m_state1_netloss_ticker = 6
+  m_state1_netloss_ticker = 6;
   m_state1_userdata = 0;
   m_line_unfinished = -1;
   m_line_buffer.clear();
