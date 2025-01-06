@@ -931,6 +931,12 @@ modem::modem_state1_t modem::State1Ticker1()
       break;
 
     case NetLoss:
+      if (--m_state1_netloss_ticker == 0)
+        {
+        m_state1_netloss_ticker = 6;
+        ESP_LOGW(TAG, "NetLoss: unresolvable error, performing modem power cycle");
+        return PowerOffOn;
+        }
       break;
 
     case NetHold:
@@ -960,17 +966,8 @@ modem::modem_state1_t modem::State1Ticker1()
       if (m_state1_userdata == 99)
         {
         // We've lost the network connection
-        if (--m_state1_netloss_ticker == 0)
-          {
-          m_state1_netloss_ticker = 6;
-          ESP_LOGW(TAG, "Lost network connection (+PPP disconnect in NetMode), performing modem power cycle");
-          return PowerOffOn;
-          }
-          else
-          {
-          ESP_LOGW(TAG, "Lost network connection (+PPP disconnect in NetMode)");
-          return NetLoss;
-          }
+        ESP_LOGW(TAG, "Lost network connection (+PPP disconnect in NetMode)");
+        return NetLoss;
         }
       if ((m_mux != NULL)&&(m_state1_ticker>5)&&((m_state1_ticker % 30) == 0))
         { m_driver->StatusPoller(); }
