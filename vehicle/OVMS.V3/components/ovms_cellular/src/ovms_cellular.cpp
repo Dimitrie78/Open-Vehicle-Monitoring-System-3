@@ -973,16 +973,7 @@ modem::modem_state1_t modem::State1Ticker1()
         {
         // We've lost the network connection
         ESP_LOGW(TAG, "Lost network connection (+PPP disconnect in NetMode)");
-        if (--m_state1_netloss_ticker == 0)
-          {
-          m_state1_netloss_ticker = 5;
-          ESP_LOGW(TAG, "Lost network connection (+PPP disconnect in NetMode), performing modem power cycle");
-          return PowerOffOn;
-          }
-          else
-          {
-          return NetLoss;
-          }
+        return NetLoss;
         }
       if ((m_mux != NULL)&&(m_state1_ticker>5)&&((m_state1_ticker % 30) == 0))
         { m_driver->StatusPoller(); }
