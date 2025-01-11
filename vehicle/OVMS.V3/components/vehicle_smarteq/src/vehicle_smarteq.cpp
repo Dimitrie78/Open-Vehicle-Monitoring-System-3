@@ -98,7 +98,7 @@ OvmsVehicleSmartEQ::OvmsVehicleSmartEQ() {
 
   // BMS configuration:
   BmsSetCellArrangementVoltage(96, 3);
-  BmsSetCellArrangementTemperature(28, 1);
+  BmsSetCellArrangementTemperature(27, 1);
   BmsSetCellLimitsVoltage(2.0, 5.0);
   BmsSetCellLimitsTemperature(-39, 200);
   BmsSetCellDefaultThresholdsVoltage(0.020, 0.030);
@@ -137,6 +137,9 @@ OvmsVehicleSmartEQ::OvmsVehicleSmartEQ() {
   mt_obl_main_amps = new OvmsMetricVector<float>("xsq.obl.amps", SM_STALE_HIGH, Amps);
   mt_obl_main_CHGpower = new OvmsMetricVector<float>("xsq.obl.power", SM_STALE_HIGH, kW);
   mt_obl_main_freq = MyMetrics.InitFloat("xsq.obl.freq", SM_STALE_MID, 0, Other);
+  
+  // standard settings
+  StdMetrics.ms_v_bat_cac->SetValue(42);
 
   RegisterCanBus(1, CAN_MODE_ACTIVE, CAN_SPEED_500KBPS);
 
@@ -281,6 +284,7 @@ void OvmsVehicleSmartEQ::IncomingFrameCan1(CAN_frame_t* p_frame) {
       break;
     case 0x646:
       mt_use_at_reset->SetValue(CAN_BYTE(1) * 0.1);
+      StandardMetrics.ms_v_charge_kwh_grid_total->SetValue(mt_use_at_reset->AsFloat()); // not the best idea at the moment
       break;
     case 0x654: // SOC(b)
       StandardMetrics.ms_v_bat_soc->SetValue(CAN_BYTE(3));
@@ -311,6 +315,7 @@ void OvmsVehicleSmartEQ::IncomingFrameCan1(CAN_frame_t* p_frame) {
           StandardMetrics.ms_v_charge_type->SetValue("type2");
           StandardMetrics.ms_v_charge_state->SetValue("charging");
           StandardMetrics.ms_v_charge_substate->SetValue("onrequest");
+          StandardMetrics.ms_v_charge_timestamp->SetValue(StdMetrics.ms_m_timeutc->AsInt());
         } else { // EVENT stopped charging
           StandardMetrics.ms_v_charge_pilot->SetValue(false);
           StandardMetrics.ms_v_charge_inprogress->SetValue(isCharging);
@@ -320,6 +325,7 @@ void OvmsVehicleSmartEQ::IncomingFrameCan1(CAN_frame_t* p_frame) {
           StandardMetrics.ms_v_charge_duration_soc->SetValue(0);
           StandardMetrics.ms_v_charge_duration_range->SetValue(0);
           StandardMetrics.ms_v_charge_power->SetValue(0);
+          StandardMetrics.ms_v_charge_timestamp->SetValue(StdMetrics.ms_m_timeutc->AsInt());
           if (StandardMetrics.ms_v_bat_soc->AsInt() < 95) {
             // Assume the charge was interrupted
             ESP_LOGI(TAG,"Car charge session was interrupted");
@@ -373,7 +379,7 @@ void OvmsVehicleSmartEQ::ResetTripCounters() {
  */
 void OvmsVehicleSmartEQ::HandleEnergy() {
   float voltage  = StandardMetrics.ms_v_bat_voltage->AsFloat(0, Volts);
-  float current  = StandardMetrics.ms_v_bat_current->AsFloat(0, Amps);
+  float current  = -StandardMetrics.ms_v_bat_current->AsFloat(0, Amps);
 
   // Power (in kw) resulting from voltage and current
   float power = voltage * current / 1000.0;
@@ -397,7 +403,7 @@ void OvmsVehicleSmartEQ::HandleCharging() {
   float limit_soc       = StandardMetrics.ms_v_charge_limit_soc->AsFloat(0);
   float limit_range     = StandardMetrics.ms_v_charge_limit_range->AsFloat(0, Kilometers);
   float max_range       = StandardMetrics.ms_v_bat_range_full->AsFloat(0, Kilometers);
-  float charge_current  = StandardMetrics.ms_v_bat_current->AsFloat(0, Amps);
+  float charge_current  = -StandardMetrics.ms_v_bat_current->AsFloat(0, Amps);
   float charge_voltage  = StandardMetrics.ms_v_bat_voltage->AsFloat(0, Volts);
 
   // Are we charging?
@@ -451,6 +457,13 @@ void OvmsVehicleSmartEQ::UpdateChargeMetrics() {
 
   if( phasecnt == 1 && mt_obl_fastchg->AsBool() ) {
     StandardMetrics.ms_v_charge_current->SetValue(mt_obl_main_amps->GetElemValue(n));
+  } else if( phasecnt == 3 && mt_obl_fastchg->AsBool() ) {
+    for(i = 0; i < 3; i++) {
+      if (mt_obl_main_amps->GetElemValue(i) > 0) {
+        ampsum += mt_obl_main_amps->GetElemValue(i);
+      }
+    }
+    StandardMetrics.ms_v_charge_current->SetValue(ampsum/3);
   } else {
     for(i = 0; i < 3; i++) {
       if (mt_obl_main_amps->GetElemValue(i) > 0) {
@@ -460,7 +473,7 @@ void OvmsVehicleSmartEQ::UpdateChargeMetrics() {
     StandardMetrics.ms_v_charge_current->SetValue(ampsum);
   }
 
-  StandardMetrics.ms_v_charge_power->SetValue(mt_obl_main_CHGpower->GetElemValue(0));
+  StandardMetrics.ms_v_charge_power->SetValue( mt_obl_main_CHGpower->GetElemValue(0) + mt_obl_main_CHGpower->GetElemValue(1) );
   float power = StandardMetrics.ms_v_charge_power->AsFloat();
   float efficiency = (power == 0)
                      ? 0
@@ -490,11 +503,11 @@ void OvmsVehicleSmartEQ::HandlePollState() {
     PollSetState(3);
     ESP_LOGI(TAG,"Pollstate Charging");
   }
-  else if ( !StandardMetrics.ms_v_charge_pilot->AsBool() && StandardMetrics.ms_v_env_awake->AsBool() && m_poll_state != 2 && m_enable_write ) {
+  else if ( !StandardMetrics.ms_v_charge_pilot->AsBool() && StandardMetrics.ms_v_env_on->AsBool() && m_poll_state != 2 && m_enable_write ) {
     PollSetState(2);
     ESP_LOGI(TAG,"Pollstate Running");
   }
-  else if ( !StandardMetrics.ms_v_charge_pilot->AsBool() && !StandardMetrics.ms_v_env_awake->AsBool() && mt_bus_awake->AsBool() && m_poll_state != 1 && m_enable_write ) {
+  else if ( !StandardMetrics.ms_v_charge_pilot->AsBool() && !StandardMetrics.ms_v_env_on->AsBool() && mt_bus_awake->AsBool() && m_poll_state != 1 && m_enable_write ) {
     PollSetState(1);
     ESP_LOGI(TAG,"Pollstate Awake");
   }
@@ -618,13 +631,13 @@ void OvmsVehicleSmartEQ::Ticker1(uint32_t ticker) {
  */
 void OvmsVehicleSmartEQ::PollerStateTicker(canbus *bus) {
   bool car_online = mt_bus_awake->AsBool();
-  int lv_pwrstate = mt_evc_LV_DCDC_amps->AsInt();
+  bool lv_pwrstate = (StandardMetrics.ms_v_bat_12v_voltage->AsFloat(0) > 12.8);
   
   // - base system is awake if we've got a fresh lv_pwrstate:
   StandardMetrics.ms_v_env_aux12v->SetValue(car_online);
 
-  // - charging / trickle charging 12V battery is active when lv_pwrstate is not zero:
-  StandardMetrics.ms_v_env_charging12v->SetValue(car_online && lv_pwrstate > 0);
+  // - charging / trickle charging 12V battery is active when lv_pwrstate is true:
+  StandardMetrics.ms_v_env_charging12v->SetValue(car_online && lv_pwrstate);
   
   HandlePollState();
 }

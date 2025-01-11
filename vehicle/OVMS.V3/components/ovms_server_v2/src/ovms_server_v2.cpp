@@ -710,10 +710,18 @@ void OvmsServerV2::ProcessCommand(const char* payload)
         *buffer << "AT+CUSD=1,\"" << sep+1 << "\",15\r\n";
         extram::string msg = buffer->str();
         buffer->str("");
-        if (MyPeripherals->m_cellular_modem->txcmd(msg.c_str(), msg.length()))
-          *buffer << "MP-0 c" << command << ",0";
-        else
+        if (!MyPeripherals->m_cellular_modem->m_cmd_mutex.Lock(0))
+          {
           *buffer << "MP-0 c" << command << ",1,Cannot send command";
+          }
+        else
+          {
+          if (MyPeripherals->m_cellular_modem->txcmd(msg.c_str(), msg.length()))
+            *buffer << "MP-0 c" << command << ",0";
+          else
+            *buffer << "MP-0 c" << command << ",1,Cannot send command";
+          MyPeripherals->m_cellular_modem->m_cmd_mutex.Unlock();
+          }
 #else // #ifdef CONFIG_OVMS_COMP_CELLULAR
         *buffer << "MP-0 c" << command << ",1,No modem";
 #endif // #ifdef CONFIG_OVMS_COMP_CELLULAR
@@ -1005,6 +1013,7 @@ void OvmsServerV2::TransmitMsgStat(bool always)
     StandardMetrics.ms_v_charge_timermode->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_charge_timerstart->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_bat_cac->IsModifiedAndClear(MyOvmsServerV2Modifier) |
+    StandardMetrics.ms_v_bat_capacity->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_charge_duration_full->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_charge_duration_range->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_charge_duration_soc->IsModifiedAndClear(MyOvmsServerV2Modifier) |
@@ -1019,7 +1028,10 @@ void OvmsServerV2::TransmitMsgStat(bool always)
     StandardMetrics.ms_v_charge_power->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_charge_efficiency->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_bat_current->IsModifiedAndClear(MyOvmsServerV2Modifier) |
-    StandardMetrics.ms_v_bat_range_speed->IsModifiedAndClear(MyOvmsServerV2Modifier);
+    StandardMetrics.ms_v_bat_range_speed->IsModifiedAndClear(MyOvmsServerV2Modifier) |
+    StandardMetrics.ms_v_charge_kwh_grid->IsModifiedAndClear(MyOvmsServerV2Modifier) |
+    StandardMetrics.ms_v_charge_kwh_grid_total->IsModifiedAndClear(MyOvmsServerV2Modifier) |
+    StandardMetrics.ms_v_charge_timestamp->IsModifiedAndClear(MyOvmsServerV2Modifier);
 
   // Quick exit if nothing modified
   if ((!always)&&(!modified)) return;
@@ -1110,6 +1122,14 @@ void OvmsServerV2::TransmitMsgStat(bool always)
     << ","
     << std::setprecision(1)
     << StandardMetrics.ms_v_bat_range_speed->AsFloat(0, units_speed)
+    << ","
+    << StandardMetrics.ms_v_charge_kwh_grid->AsFloat()
+    << ","
+    << StandardMetrics.ms_v_charge_kwh_grid_total->AsFloat()
+    << ","
+    << StandardMetrics.ms_v_bat_capacity->AsFloat()
+    << ","
+    << StandardMetrics.ms_v_charge_timestamp->AsString("-1", Seconds, 0)
     ;
 
   Transmit(buffer.str().c_str());
@@ -1144,7 +1164,8 @@ void OvmsServerV2::TransmitMsgGen(bool always)
     StandardMetrics.ms_v_gen_duration_empty->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_gen_duration_range->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_gen_duration_soc->IsModifiedAndClear(MyOvmsServerV2Modifier) |
-    StandardMetrics.ms_v_gen_temp->IsModifiedAndClear(MyOvmsServerV2Modifier);
+    StandardMetrics.ms_v_gen_temp->IsModifiedAndClear(MyOvmsServerV2Modifier) |
+    StandardMetrics.ms_v_gen_timestamp->IsModifiedAndClear(MyOvmsServerV2Modifier);
 
   // Quick exit if nothing modified
   if ((!always)&&(!modified)) return;
@@ -1153,9 +1174,9 @@ void OvmsServerV2::TransmitMsgGen(bool always)
   buffer
     << std::fixed
     << std::setprecision(1)
-    << "MP-0 G"
+    << "MP-0 X"
     << StandardMetrics.ms_v_gen_inprogress->AsBool()
-    << ";"
+    << ","
     << StandardMetrics.ms_v_gen_pilot->AsBool()
     << ","
     << StandardMetrics.ms_v_gen_voltage->AsInt()
@@ -1197,8 +1218,10 @@ void OvmsServerV2::TransmitMsgGen(bool always)
     << StandardMetrics.ms_v_gen_duration_range->AsInt()
     << ","
     << StandardMetrics.ms_v_gen_duration_soc->AsInt()
-    << ";"
+    << ","
     << StandardMetrics.ms_v_gen_temp->AsFloat()
+    << ","
+    << StandardMetrics.ms_v_gen_timestamp->AsString("-1", Seconds, 0)
     ;
 
   Transmit(buffer.str().c_str());
@@ -1418,7 +1441,8 @@ void OvmsServerV2::TransmitMsgFirmware(bool always)
     StandardMetrics.ms_m_net_provider->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_env_service_range->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_env_service_time->IsModifiedAndClear(MyOvmsServerV2Modifier) |
-    StandardMetrics.ms_m_hardware->IsModifiedAndClear(MyOvmsServerV2Modifier);
+    StandardMetrics.ms_m_hardware->IsModifiedAndClear(MyOvmsServerV2Modifier) |
+    StandardMetrics.ms_m_net_mdm_mode->IsModifiedAndClear(MyOvmsServerV2Modifier);
 
   // Quick exit if nothing modified
   if ((!always)&&(!modified)) return;
@@ -1445,6 +1469,8 @@ void OvmsServerV2::TransmitMsgFirmware(bool always)
     << StandardMetrics.ms_v_env_service_time->AsString("-1", Seconds, 0)
     << ","
     << mp_encode(StandardMetrics.ms_m_hardware->AsString(""))
+    << ","
+    << mp_encode(StandardMetrics.ms_m_net_mdm_mode->AsString(""))
     ;
 
   Transmit(buffer.str().c_str());
@@ -1814,6 +1840,7 @@ void OvmsServerV2::MetricModified(OvmsMetric* metric)
       (metric == StandardMetrics.ms_v_charge_inprogress)||
       (metric == StandardMetrics.ms_v_env_cooling)||
       (metric == StandardMetrics.ms_v_bat_cac)||
+      (metric == StandardMetrics.ms_v_bat_capacity)||
       (metric == StandardMetrics.ms_v_bat_soh))
     {
     m_now_stat = true;

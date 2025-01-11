@@ -20,6 +20,7 @@
 ;               Fix handling of range while charging
 ;               Improve responsiveness for OBD2ECU
 ;               Add indicators and warning light metrics
+;       0.0.6:  Improve the battery monitor
 ;
 ;    (C) 2022,2023 Michael Geddes
 ; ----- Kona/Kia Module -----
@@ -46,7 +47,7 @@
 ; OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 ; THE SOFTWARE.
 */
-#define IONIQ5_VERSION "0.0.5"
+#define IONIQ5_VERSION "0.0.6"
 
 #include "vehicle_hyundai_ioniq5.h"
 
@@ -228,258 +229,6 @@ int CalcRemainingChargeMins(float chargewatts, float availwatts, bool adjustTemp
   // convert to minutes (summary value to minutes)
   // 60 (hours to mins) / 100 (percent to ratio) -> 0.6
   return (int)((batterySizeWh * sumval * 0.6) + 0.5);
-}
-
-OvmsBatteryMon::OvmsBatteryMon()
-{
-  m_count = 0;
-  m_first = 0;
-  m_dirty = false;
-  m_to_notify = false;
-  m_lastState = OvmsBatteryState::Unknown;
-  m_average_last = 0;
-  m_diff_last = 0;
-}
-void OvmsBatteryMon::add(float voltage)
-{
-  XARM("OvmsBatteryMon::add");
-  float newVoltage = roundf(voltage * entry_mult);
-  int32_t iVoltage = static_cast<int32_t>(newVoltage);
-
-  if (m_count < entry_count) {
-    ++m_count;
-  }
-  else if (++m_first >= entry_count) {
-    m_first = 0;
-  }
-
-  uint16_t last = (m_first + m_count - 1) % entry_count;
-  m_voltages[last] = iVoltage;
-  m_dirty = true;
-  XDISARM;
-}
-bool OvmsBatteryMon::checkStateChange()
-{
-  XARM("OvmsBatteryMon::checkStateChange");
-  bool res = false;
-  if (m_dirty) {
-    // Causes calculation and clearing dirty.
-    state();
-  }
-
-  if (m_to_notify) {
-    m_to_notify = false;
-    res = true;
-  }
-  XDISARM;
-  return res;
-}
-
-OvmsBatteryState OvmsBatteryMon::state()
-{
-  XARM("OvmsBatteryMon::state");
-  if (m_dirty) {
-    auto newState = calc_state(m_average_last,m_diff_last);
-    m_dirty = false;
-    if (newState != m_lastState) {
-      m_to_notify = true;
-      m_lastState = newState;
-    }
-  }
-  XDISARM;
-  return m_lastState;
-}
-bool OvmsBatteryMon::calc_average( int32_t &average, int32_t &average_first, int32_t &average_last)
-{
-  XARM("OvmsBatteryMon::calc_average");
-  if (m_count < 5) {
-    XDISARM;
-    return false;
-  }
-
-  int32_t sum = 0, sum_first = 0, sum_last = 0;
-  uint16_t first_bit_count = m_count * first_mult / first_divis;
-  uint16_t entry = m_first;
-  for (uint16_t idx = 0; idx < m_count; ++idx) {
-    int32_t curEntry = m_voltages[entry];
-    sum += curEntry;
-    if (idx < first_bit_count) {
-      sum_first += curEntry;
-    }
-    else {
-      sum_last += curEntry;
-    }
-    if (++entry == entry_count) {
-      entry = 0;
-    }
-  }
-  average = sum / m_count;
-  average_first = sum_first / first_bit_count;
-  uint16_t last_bit_count = m_count - first_bit_count;
-  if (last_bit_count == 0) {
-    average_last = last();
-  }
-  else {
-    average_last = sum_last / last_bit_count;
-  }
-
-  XDISARM;
-  return true;
-}
-
-OvmsBatteryState OvmsBatteryMon::calc_state(int32_t &ave_last, int32_t &diff_last)
-{
-  XARM("OvmsBatteryMon::calc_state");
-  if (m_count == 0) {
-    XDISARM;
-    return OvmsBatteryState::Unknown;
-  }
-  int32_t lastEntry = last();
-  if (lastEntry == 0) {
-    XDISARM;
-    return OvmsBatteryState::Unknown;
-  }
-
-  if (m_count < 5) {
-    if (lastEntry > charge_threshold) {
-      XDISARM;
-      return OvmsBatteryState::Charging;
-    }
-    if (lastEntry < low_threshold) {
-      XDISARM;
-      return OvmsBatteryState::Low;
-    }
-
-    XDISARM;
-    return OvmsBatteryState::Unknown;
-  }
-
-  int32_t average, average_first, average_last;
-  calc_average(average, average_first, average_last);
-  int32_t diff = (average_last - average_first);
-  ave_last = average_last;
-  diff_last = diff;
-
-  if (average_last < low_threshold) {
-    XDISARM;
-    return OvmsBatteryState::Low;
-  }
-
-  if (average_last > charge_threshold) {
-    XDISARM;
-    return OvmsBatteryState::Charging;
-  }
-
-  if (abs(diff) < smooth_threshold) {
-    XDISARM;
-    return OvmsBatteryState::Normal;
-  }
-
-  if (diff > blip_threshold) {
-    XDISARM;
-    return OvmsBatteryState::Blip;
-  }
-  else if (diff < dip_threshold) {
-    XDISARM;
-    return OvmsBatteryState::Dip;
-  }
-  XDISARM;
-  return OvmsBatteryState::Normal;
-}
-
-int32_t OvmsBatteryMon::last()
-{
-  XARM("OvmsBatteryMon::last");
-  if (m_count == 0) {
-    XDISARM;
-    return 0;
-  }
-  uint16_t last_idx = (m_first + m_count - 1) % entry_count;
-  int32_t ret = m_voltages[last_idx];
-  XDISARM;
-  return ret;
-}
-
-float OvmsBatteryMon::lastf()
-{
-  return float(last()) / entry_mult;
-}
-float OvmsBatteryMon::average_lastf()
-{
-  // Calling state() also checks for dirty value and recalculates.
-  if (state() == OvmsBatteryState::Unknown) {
-    return lastf();
-  }
-  return m_average_last / entry_mult;
-}
-
-float OvmsBatteryMon::diff_lastf()
-{
-  return m_diff_last / entry_mult;
-}
-
-std::string OvmsBatteryMon::to_string()
-{
-  XARM("OvmsBatteryMon::to_string");
-  std::stringstream ret;
-  bool needs_cr = false;
-  ret << "n=" << m_count << ":" << endl;
-  ret.setf( std::ios::fixed, std::ios::floatfield);
-  for (int i = 0; i < m_count; ++i) {
-    int32_t cur = m_voltages[(m_first + i) % entry_count];
-    ret.width(6);
-    ret.precision(2);
-    ret << (float(cur) / entry_mult);
-    if (i % 5 == 4) {
-      ret << endl;
-      needs_cr = false;
-    } else
-      needs_cr = true;
-  }
-  if (needs_cr)
-    ret << endl;
-
-  int32_t average, average_first, average_last;
-  if (calc_average(average, average_first, average_last)) {
-    float ave = float(average) / entry_mult;
-    float ave_first = (float(average_first) / entry_mult);
-    float ave_last = (float(average_last) / entry_mult);
-    ret.setf( std::ios::fixed, std::ios::floatfield);
-    ret.precision(2);
-    ret.width(0);
-    ret << " ave=" << ave << endl
-        << " ave_first=" << ave_first << endl
-        << " ave_last=" << ave_last  << endl
-        << " diff=" << (ave_last - ave_first) << endl;
-  }
-  ret.width(0);
-
-  ret << " state=";
-  int32_t ave_ign, diff_ign;
-  switch (calc_state(ave_ign, diff_ign)) {
-    case OvmsBatteryState::Unknown:
-      ret << "Unknown";
-      break;
-    case OvmsBatteryState::Normal:
-      ret << "Normal";
-      break;
-    case OvmsBatteryState::Charging:
-      ret << "Charging";
-      break;
-    case OvmsBatteryState::Blip:
-      ret << "Blip";
-      break;
-    case OvmsBatteryState::Dip:
-      ret << "Dip";
-      break;
-    case OvmsBatteryState::Low:
-      ret << "Low";
-      break;
-  }
-  ret << endl;
-
-  XDISARM;
-  return ret.str();
 }
 
 /**
@@ -695,6 +444,8 @@ OvmsHyundaiIoniqEv::OvmsHyundaiIoniqEv()
   ESP_LOGD(TAG, "PollState->Ping for 30 (Init)");
   PollState_Ping(30);
 
+  EnableAuxMonitor();
+
   XDISARM;
 }
 
@@ -818,7 +569,7 @@ void OvmsHyundaiIoniqEv::ConfigChanged(OvmsConfigParam *param)
 
   if (suff.empty())
     StdMetrics.ms_v_charge_limit_soc->Clear();
-   else {
+  else {
     auto range = atoi(suff.c_str());
     if (range <=0 )
       StdMetrics.ms_v_charge_limit_soc->Clear();
@@ -829,13 +580,13 @@ void OvmsHyundaiIoniqEv::ConfigChanged(OvmsConfigParam *param)
   suff = MyConfig.GetParamValue("xiq", "suffrange");
   if (suff.empty())
     StdMetrics.ms_v_charge_limit_range->Clear();
-   else {
-     auto range = atoi(suff.c_str());
-     if (range <= 0)
-       StdMetrics.ms_v_charge_limit_range->Clear();
-     else
-       *StdMetrics.ms_v_charge_limit_range = (float)range;
-   }
+  else {
+    auto range = atoi(suff.c_str());
+    if (range <= 0)
+      StdMetrics.ms_v_charge_limit_range->Clear();
+    else
+      *StdMetrics.ms_v_charge_limit_range = (float)range;
+  }
 #ifdef XIQ_CAN_WRITE
   kia_enable_write = MyConfig.GetParamValueBool("xiq", "canwrite", false);
 #endif
@@ -1026,67 +777,9 @@ void OvmsHyundaiIoniqEv::Ticker1(uint32_t ticker)
     HandleChargeStop();
   }
 
-  // Battery Monitor (evey 2 seconds).
-  if (((ticker % 2) == 0) && StdMetrics.ms_v_bat_12v_voltage->IsDefined()) {
-    hif_aux_battery_mon.add(StdMetrics.ms_v_bat_12v_voltage->AsFloat());
-    if (hif_aux_battery_mon.checkStateChange()) {
-#ifdef OVMS_DEBUG_BATTERYMON
-      ESP_LOGV(TAG, "Aux Battery: %s", hif_aux_battery_mon.to_string().c_str());
-#endif
-      switch (hif_aux_battery_mon.state()) {
-        case OvmsBatteryState::Unknown:
-          break;
-        case OvmsBatteryState::Normal:
-          ESP_LOGD(TAG, "Aux Battery state returned to normal");
-          m_b_aux_soc->SetValue( CalcAUXSoc(hif_aux_battery_mon.average_lastf()), Percentage );
-          break;
-        case OvmsBatteryState::Charging:
-          ESP_LOGD(TAG, "Aux Battery state: Charging %g" , hif_aux_battery_mon.average_lastf());
-          break;
-        case OvmsBatteryState::Blip: {
-          ESP_LOGD(TAG, "Aux Battery state: Blip %g", hif_aux_battery_mon.diff_lastf());
-          if ( IsPollState_Off()) {
-            ESP_LOGD(TAG, "PollState->Ping for 30 (Blip)");
-            PollState_Ping(30);
-          }
-        }
-        break;
-        case OvmsBatteryState::Dip: {
-          ESP_LOGD(TAG, "Aux Battery state: Dip %g", hif_aux_battery_mon.diff_lastf());
-          if ( IsPollState_Off()) {
-            ESP_LOGD(TAG, "PollState->Ping for 30 (Dip)");
-            PollState_Ping(30);
-          }
-        }
-        break;
-        case OvmsBatteryState::Low: {
-          ESP_LOGD(TAG, "Aux Battery state: Low %g", hif_aux_battery_mon.diff_lastf());
-          if (!IsPollState_Off()) {
-            ESP_LOGD(TAG, "PollState->Off (Aux Battery state Low)");
-            PollState_Off();
-            // ?? Turn other things off ??
-          }
-          m_b_aux_soc->SetValue( CalcAUXSoc(hif_aux_battery_mon.average_lastf()), Percentage );
-          XDISARM;
-          return;
-        }
-      }
-    }
-#ifdef OVMS_DEBUG_BATTERYMON_VERBOSE
-    else if (ticker % 30) {
-      ESP_LOGV(TAG, "Aux Battery: %s", hif_aux_battery_mon.to_string().c_str());
-    }
-#endif
-    if (hif_aux_battery_mon.state() == OvmsBatteryState::Charging) {
-      // Maintain ping until stop charging
-      if (IsPollState_Off() || IsPollState_PingAux() ) {
-        ESP_LOGD(TAG, "PollState->PingAux for 30 (Charging)");
-        PollState_PingAux(30);
-      }
-    }
-
+  if ( !(ticker & 1) && m_aux_battery_mon.state() == OvmsBatteryState::Charging) {
+    BatteryStateStillCharging();
   }
-
   if (IsPollState_Off() && StdMetrics.ms_v_door_chargeport->AsBool() && kia_ready_for_chargepollstate) {
     //Set pollstate charging if car is off and chargeport is open.
     ESP_LOGI(TAG, "CHARGEDOOR OPEN. READY FOR CHARGING.");
@@ -1246,7 +939,77 @@ void OvmsHyundaiIoniqEv::Ticker1(uint32_t ticker)
 #endif
 
   DoNotify();
+
   XDISARM;
+}
+
+void OvmsHyundaiIoniqEv::NotifiedVehicleAux12vStateChanged(OvmsBatteryState new_state, const OvmsBatteryMon &monitor)
+{
+#ifdef OVMS_DEBUG_BATTERYMON
+  ESP_LOGV(TAG, "Aux Battery: %s", monitor.to_string().c_str());
+#endif
+  switch (new_state) {
+    case OvmsBatteryState::Unknown:
+      break;
+    case OvmsBatteryState::Normal:
+      ESP_LOGD(TAG, "Aux Battery state returned to normal");
+      m_b_aux_soc->SetValue( CalcAUXSoc(monitor.average_lastf()), Percentage );
+      break;
+    case OvmsBatteryState::Charging:
+      ESP_LOGD(TAG, "Aux Battery state: Charging %g" , monitor.average_lastf());
+      break;
+    case OvmsBatteryState::ChargingDip:
+      ESP_LOGD(TAG, "Aux Battery state: Charging %g Dip %g",
+          monitor.average_lastf(), monitor.diff_lastf());
+      if ( IsPollState_Off()) {
+        ESP_LOGD(TAG, "PollState->Ping for 30 (Charge Dip)");
+        PollState_Ping(30);
+      }
+      break;
+    case OvmsBatteryState::ChargingBlip:
+      ESP_LOGD(TAG, "Aux Battery state: Charging %g Blip %g",
+          monitor.average_lastf(), monitor.diff_lastf());
+      if ( IsPollState_Off()) {
+        ESP_LOGD(TAG, "PollState->Ping for 30 (Charge Blip)");
+        PollState_Ping(30);
+      }
+      break;
+    case OvmsBatteryState::Blip: {
+      ESP_LOGD(TAG, "Aux Battery state: Blip %g", monitor.diff_lastf());
+      if ( IsPollState_Off()) {
+        ESP_LOGD(TAG, "PollState->Ping for 30 (Blip)");
+        PollState_Ping(30);
+      }
+    }
+    break;
+    case OvmsBatteryState::Dip: {
+      ESP_LOGD(TAG, "Aux Battery state: Dip %g", monitor.diff_lastf());
+      if ( IsPollState_Off()) {
+        ESP_LOGD(TAG, "PollState->Ping for 30 (Dip)");
+        PollState_Ping(30);
+      }
+    }
+    break;
+    case OvmsBatteryState::Low: {
+      ESP_LOGD(TAG, "Aux Battery state: Low %g", monitor.diff_lastf());
+      if (!IsPollState_Off()) {
+        ESP_LOGD(TAG, "PollState->Off (Aux Battery state Low)");
+        PollState_Off();
+        // ?? Turn other things off ??
+      }
+      m_b_aux_soc->SetValue( CalcAUXSoc(monitor.average_lastf()), Percentage );
+      XDISARM;
+      return;
+    }
+  }
+}
+
+void OvmsHyundaiIoniqEv::BatteryStateStillCharging()
+{
+  if (IsPollState_Off()) {
+    ESP_LOGD(TAG, "PollState->PingAux for 30 (Charging)");
+    PollState_PingAux(30);
+  }
 }
 
 /**
@@ -1261,12 +1024,25 @@ void OvmsHyundaiIoniqEv::Ticker10(uint32_t ticker)
     }
   }
 }
+
+void OvmsHyundaiIoniqEv::MetricModified(OvmsMetric* metric)
+{
+  KiaVehicle::MetricModified(metric);
+
+  if (metric == StdMetrics.ms_v_env_locked || metric == StdMetrics.ms_v_env_on) {
+    if (StdMetrics.ms_v_env_locked->AsBool(false) || StdMetrics.ms_v_env_on->AsBool(false)) {
+      CheckResetDoorCheck();
+    }
+  }
+}
 void OvmsHyundaiIoniqEv::CheckResetDoorCheck()
 {
   if (m_checklock_start > 0) {
     if (m_checklock_notify > 0) {
       if ((monotonictime - m_checklock_notify) < (30*60)) {
-        MyNotify.NotifyString("info", "unlock.ok", "Vehicle is now locked");
+        if (StdMetrics.ms_v_env_locked->AsBool(false)) {
+          MyNotify.NotifyString("info", "unlock.ok", "Vehicle is now locked");
+        }
       }
       m_checklock_notify = 0;
     }

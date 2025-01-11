@@ -117,6 +117,8 @@ server.web.socket.opened            <cnt>     Web server has a new websocket cli
 system.modem.down                             Modem has been disconnected
 system.modem.gotgps                           Modem GPS has obtained lock
 system.modem.gotip                            Modem received IP address from DATA
+system.modem.gpsstart                         Modem GPS has started
+system.modem.gpsstop                          Modem GPS has stopped
 system.modem.installed                        Modem type has been identified, driver installed
 system.modem.lostgps                          Modem GPS has lost lock
 system.modem.muxstart                         Modem MUX has started
@@ -128,6 +130,7 @@ system.modem.netstart                         Modem is starting DATA network
 system.modem.netwait                          Modem is pausing before starting DATA
 system.modem.poweredon                        Modem is powered on
 system.modem.poweringon                       Modem is powering on
+system.modem.received.sms           <sms>     An SMS message has been received
 system.modem.received.ussd          <ussd>    A USSD message has been received
 system.modem.stop                             Modem has been shut down
 system.shutdown                               System has been shut down
@@ -164,6 +167,13 @@ vehicle.asleep                                Vehicle systems are asleep
 vehicle.awake                                 Vehicle systems are awake
 vehicle.aux.12v.on                            Vehicle 12V auxiliary system is on (base system awake)
 vehicle.aux.12v.off                           Vehicle 12V auxiliary system is off
+vehicle.aux.12v.normal                        Vehicle 12V auxiliary system changed to normal voltage range
+vehicle.aux.12v.charging                      Vehicle 12V auxiliary system changed to charging voltage range
+vehicle.aux.12v.blip                          Vehicle 12V auxiliary system has spiked from normal voltage range
+vehicle.aux.12v.dip                           Vehicle 12V auxiliary system has dipped from normal voltage range
+vehicle.aux.12v.charging.blip                 Vehicle 12V auxiliary system has spiked from charging voltage range
+vehicle.aux.12v.charging.dip                  Vehicle 12V auxiliary system has dipped from charging voltage range
+vehicle.aux.12v.low                           Vehicle 12V auxiliary system is in low-voltage range
 vehicle.charge.12v.start                      Vehicle 12V battery is charging
 vehicle.charge.12v.stop                       Vehicle 12V battery has stopped charging
 vehicle.charge.finished                       Vehicle charge has completed normally
