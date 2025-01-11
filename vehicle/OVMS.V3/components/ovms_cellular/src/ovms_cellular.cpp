@@ -898,6 +898,11 @@ modem::modem_state1_t modem::State1Ticker1()
         }
       else if ((m_state1_ticker > 3)&&((m_netreg >= Registered)))
         return NetStart; // We have GSM, so start the network
+      if ((m_state1_ticker % 300) == 0)
+        {
+        ESP_LOGW(TAG, "NetWait: unresolvable error, performing modem power cycle");
+        return PowerOffOn;
+        }
       if ((m_mux != NULL)&&(m_state1_ticker>3)&&((m_state1_ticker % 10) == 0))
         { m_driver->StatusPoller(); }
       break;
