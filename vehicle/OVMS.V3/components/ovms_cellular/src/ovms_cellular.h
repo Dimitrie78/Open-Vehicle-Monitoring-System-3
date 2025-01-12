@@ -138,7 +138,6 @@ class modem : public pcp, public InternalRamAllocated
     int                    m_state1_ticker;
     modem_state1_t         m_state1_timeout_goto;
     int                    m_state1_timeout_ticks;
-    int                    m_state1_netloss_ticker;
     int                    m_state1_userdata;
     int                    m_line_unfinished;
 
