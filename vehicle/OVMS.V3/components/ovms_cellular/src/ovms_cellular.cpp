@@ -288,7 +288,7 @@ modem::modem(const char* name, uart_port_t uartnum, int baud, int rxpin, int txp
   m_state1_ticker = 0;
   m_state1_timeout_goto = None;
   m_state1_timeout_ticks = -1;
-  m_state1_netloss_ticker = 6;
+  m_state1_netloss_ticker = -1;
   m_state1_userdata = 0;
   m_line_unfinished = -1;
   m_line_buffer.clear();
@@ -936,9 +936,9 @@ modem::modem_state1_t modem::State1Ticker1()
       break;
 
     case NetLoss:
-      if (--m_state1_netloss_ticker == 0)
+      if (++m_state1_netloss_ticker == 60)
         {
-        m_state1_netloss_ticker = 6;
+        m_state1_netloss_ticker = -1;
         ESP_LOGW(TAG, "NetLoss: unresolvable error, performing modem power cycle");
         return PowerOffOn;
         }
@@ -957,6 +957,7 @@ modem::modem_state1_t modem::State1Ticker1()
       break;
 
     case NetMode:
+      m_state1_netloss_ticker = -1;
       if (m_powermode == Sleep)
         {
         // Need to shutdown ppp, and get back to NetSleep mode
