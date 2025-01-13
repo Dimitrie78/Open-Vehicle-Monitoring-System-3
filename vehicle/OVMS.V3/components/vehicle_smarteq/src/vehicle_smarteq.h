@@ -84,6 +84,8 @@ class OvmsVehicleSmartEQ : public OvmsVehicle
     vehicle_command_t CommandClimateControl(bool enable) override;
     vehicle_command_t CommandHomelink(int button, int durationms=1000) override;
     vehicle_command_t CommandWakeup() override;
+    vehicle_command_t CommandLock(const char* pin) override;
+    vehicle_command_t CommandUnlock(const char* pin) override;
     vehicle_command_t CommandStat(int verbosity, OvmsWriter* writer) override;
 
   public:
@@ -135,6 +137,10 @@ class OvmsVehicleSmartEQ : public OvmsVehicle
     bool m_enable_LED_state;                // Online LED State
     bool m_ios_tpms_fix;                    // IOS TPMS Display Fix
     bool m_resettrip;                       // Reset Trip Values when Charging/Driving
+    int m_TPMS_FL;                          // TPMS Sensor Front Left
+    int m_TPMS_FR;                          // TPMS Sensor Front Right
+    int m_TPMS_RL;                          // TPMS Sensor Rear Left
+    int m_TPMS_RR;                          // TPMS Sensor Rear Right
 
     #define DEFAULT_BATTERY_CAPACITY 17600
     #define MAX_POLL_DATA_LEN 126
