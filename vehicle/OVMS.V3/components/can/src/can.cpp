@@ -45,9 +45,11 @@ static const char *TAG = "can";
 #include <ctype.h>
 #include <string.h>
 #include <iomanip>
+#include <cstdio>
 #include "ovms_config.h"
 #include "ovms_command.h"
 #include "metrics_standard.h"
+#include "vehicle_poller.h"
 
 #if defined(CONFIG_OVMS_COMP_ESP32CAN) || \
     defined(CONFIG_OVMS_COMP_MCP2515) || \
@@ -70,16 +72,6 @@ void can_start(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, co
   int baud = atoi(argv[0]);
   esp_err_t res;
 
-  CAN_mode_t smode = CAN_MODE_LISTEN;
-  if (strcmp(mode, "active")==0) smode = CAN_MODE_ACTIVE;
-
-  canbus* sbus = (canbus*)MyPcpApp.FindDeviceByName(bus);
-  if (sbus == NULL)
-    {
-    writer->puts("Error: Cannot find named CAN bus");
-    return;
-    }
-
   dbcfile *dbcfile = NULL;
   if (argc>1)
     {
@@ -95,36 +87,59 @@ void can_start(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, co
       }
     }
 
+  CAN_mode_t smode = CAN_MODE_LISTEN;
+  if (strcmp(mode, "active")==0) smode = CAN_MODE_ACTIVE;
+
+  CAN_speed_t cspeed = CAN_SPEED_33KBPS;
   switch (baud)
     {
     case 33333:
-      res = sbus->Start(smode,CAN_SPEED_33KBPS,dbcfile);
+      cspeed = CAN_SPEED_33KBPS;
       break;
     case 50000:
-      res = sbus->Start(smode,CAN_SPEED_50KBPS,dbcfile);
+      cspeed = CAN_SPEED_50KBPS;
       break;
     case 83333:
-      res = sbus->Start(smode,CAN_SPEED_83KBPS,dbcfile);
+      cspeed = CAN_SPEED_83KBPS;
       break;
     case 100000:
-      res = sbus->Start(smode,CAN_SPEED_100KBPS,dbcfile);
+      cspeed = CAN_SPEED_100KBPS;
       break;
     case 125000:
-      res = sbus->Start(smode,CAN_SPEED_125KBPS,dbcfile);
+      cspeed = CAN_SPEED_125KBPS;
       break;
     case 250000:
-      res = sbus->Start(smode,CAN_SPEED_250KBPS,dbcfile);
+      cspeed = CAN_SPEED_250KBPS;
       break;
     case 500000:
-      res = sbus->Start(smode,CAN_SPEED_500KBPS,dbcfile);
+      cspeed = CAN_SPEED_500KBPS;
       break;
     case 1000000:
-      res = sbus->Start(smode,CAN_SPEED_1000KBPS,dbcfile);
+      cspeed = CAN_SPEED_1000KBPS;
       break;
     default:
       writer->puts("Error: Unrecognised speed (33333, 50000, 83333, 100000, 125000, 250000, 500000, 1000000 are accepted)");
       return;
     }
+#ifdef CONFIG_OVMS_COMP_POLLER
+  canbus* sbus;
+  unsigned int busno;
+  if (std::sscanf(bus, "can%u", &busno) != 1)
+    {
+    writer->puts("Error: invalid can bus number");
+    return;
+    }
+  res = MyPollers.RegisterCanBus(busno, smode, cspeed, dbcfile, false, sbus, verbosity, writer);
+#else
+  canbus* sbus = (canbus*)MyPcpApp.FindDeviceByName(bus);
+  if (sbus == NULL)
+    {
+    writer->puts("Error: Cannot find named CAN bus");
+    return;
+    }
+  res = sbus->Start(smode,cspeed,dbcfile);
+#endif
+
   if (res == ESP_OK)
     writer->printf("Can bus %s started in mode %s at speed %dbps\n",
                  bus, mode, baud);
@@ -878,6 +893,61 @@ void can::CAN_rxtask(void *pvParameters)
     }
   }
 
+const char *valid_baud[] = {
+  "33333", "50000", "83333", "100000", "125000", "250000", "500000", "1000000"
+};
+
+static int can_start_validate(OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv, bool complete)
+  {
+  if (argc == 1)
+    {
+    const size_t baud_count = sizeof(valid_baud) / sizeof(valid_baud[0]);
+    const char *token = argv[0];
+
+    if (complete)
+      {
+      bool match = false;
+      unsigned int index = 0;
+      writer->SetCompletion(index, nullptr);
+      int len = strlen(token);
+      for (int i = 0; i < baud_count; ++i)
+        {
+        const char *entry = valid_baud[i];
+        if (strncmp(entry, token, len) == 0)
+          {
+          writer->SetCompletion(index++, entry);
+          match = true;
+          }
+        }
+      return match ? 1 : -1;
+      }
+    else
+      {
+      for (int i = 0; i < baud_count; ++i)
+        {
+        if (strcmp(valid_baud[i], token))
+          return argc;
+        }
+      writer->printf("Error: Invalid baud %s\n", token);
+      return -1;
+      }
+    }
+  if (argc == 2)
+    {
+    return MyDBC.ExpandComplete(writer, argv[1], complete) ? argc : -1;
+    }
+  return -1;
+  }
+
+static int can_dbc_validate(OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv, bool complete)
+  {
+  if (argc == 1)
+    {
+    return MyDBC.ExpandComplete(writer, argv[0], complete) ? argc : -1;
+    }
+  return -1;
+  }
+
 ////////////////////////////////////////////////////////////////////////
 // can - the CAN system controller
 ////////////////////////////////////////////////////////////////////////
@@ -902,12 +972,12 @@ can::can()
     static const char* name[4] = {"can1", "can2", "can3", "can4"};
     OvmsCommand* cmd_canx = cmd_can->RegisterCommand(name[k-1],"CANx framework");
     OvmsCommand* cmd_canstart = cmd_canx->RegisterCommand("start","CAN start framework");
-    cmd_canstart->RegisterCommand("listen","Start CAN bus in listen mode",can_start,"<baud> [<dbc>]", 1, 2);
-    cmd_canstart->RegisterCommand("active","Start CAN bus in active mode",can_start,"<baud> [<dbc>]", 1, 2);
+    cmd_canstart->RegisterCommand("listen","Start CAN bus in listen mode",can_start,"<baud> [<dbc>]", 1, 2, true, can_start_validate);
+    cmd_canstart->RegisterCommand("active","Start CAN bus in active mode",can_start,"<baud> [<dbc>]", 1, 2, true, can_start_validate);
     cmd_canx->RegisterCommand("stop","Stop CAN bus",can_stop);
     cmd_canx->RegisterCommand("reset","Reset CAN bus",can_reset);
     OvmsCommand* cmd_candbc = cmd_canx->RegisterCommand("dbc","CAN dbc framework");
-    cmd_candbc->RegisterCommand("attach","Attach a DBC file to a CAN bus",can_dbc_attach,"<dbc>", 1, 1);
+    cmd_candbc->RegisterCommand("attach","Attach a DBC file to a CAN bus",can_dbc_attach,"<dbc>", 1, 1, true, can_dbc_validate);
     cmd_candbc->RegisterCommand("detach","Detach the DBC file from a CAN bus",can_dbc_detach);
     OvmsCommand* cmd_cantx = cmd_canx->RegisterCommand("tx","CAN tx framework");
     cmd_cantx->RegisterCommand("standard","Transmit standard CAN frame",can_tx,"<id> <data...>", 1, 9);
