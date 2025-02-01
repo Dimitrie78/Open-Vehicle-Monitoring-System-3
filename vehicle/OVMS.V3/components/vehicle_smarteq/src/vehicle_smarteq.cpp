@@ -57,11 +57,15 @@ static const OvmsPoller::poll_pid_t obdii_polls[] =
 //  { 0x79B, 0x7BB, VEHICLE_POLL_TYPE_OBDIIGROUP, 0x41, {  0,300,300,60 }, 0, ISOTP_STD }, // rqBattVoltages_P1
 //  { 0x79B, 0x7BB, VEHICLE_POLL_TYPE_OBDIIGROUP, 0x42, {  0,300,300,60 }, 0, ISOTP_STD }, // rqBattVoltages_P2
   { 0x743, 0x763, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x200c, {  0,300,10,300 }, 0, ISOTP_STD }, // extern temp byte 2+3
+  { 0x743, 0x763, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0204, {  0,300,60,60 }, 0, ISOTP_STD }, // maintenance data days
+  { 0x743, 0x763, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x0203, {  0,300,60,60 }, 0, ISOTP_STD }, // maintenance data usual distance
   { 0x7E4, 0x7EC, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x320c, {  0,300,60,60 }, 0, ISOTP_STD }, // rqHV_Energy
   { 0x7E4, 0x7EC, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x302A, {  0,300,60,60 }, 0, ISOTP_STD }, // rqDCDC_State
   { 0x7E4, 0x7EC, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x3495, {  0,300,60,60 }, 0, ISOTP_STD }, // rqDCDC_Load
   { 0x7E4, 0x7EC, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x3025, {  0,300,60,60 }, 0, ISOTP_STD }, // rqDCDC_Amps
   { 0x7E4, 0x7EC, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x3494, {  0,300,60,60 }, 0, ISOTP_STD }, // rqDCDC_Power
+  { 0x7E4, 0x7EC, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x33BA, {  0,300,60,60 }, 0, ISOTP_STD }, // indicates ext power supply
+  { 0x7E4, 0x7EC, VEHICLE_POLL_TYPE_OBDIIEXTENDED, 0x339D, {  0,300,60,60 }, 0, ISOTP_STD }, // charging plug present
   { 0x745, 0x765, VEHICLE_POLL_TYPE_OBDIIGROUP, 0x81, {  0,3600,3600,3600 }, 0, ISOTP_STD }, // req.VIN
 };
 
@@ -116,6 +120,8 @@ OvmsVehicleSmartEQ::OvmsVehicleSmartEQ() {
   mt_evc_LV_DCDC_load = MyMetrics.InitFloat("xsq.evc.lv.dcdc.load", SM_STALE_MID, 0, Percentage);
   mt_evc_LV_DCDC_power = MyMetrics.InitFloat("xsq.evc.lv.dcdc.power", SM_STALE_MID, 0, Watts);
   mt_evc_LV_DCDC_state = MyMetrics.InitInt("xsq.evc.lv.dcdc.state", SM_STALE_MID, 0, Other);
+  mt_evc_ext_power = MyMetrics.InitBool("xsq.evc.ext.power", SM_STALE_MIN, false);
+  mt_evc_plug_present = MyMetrics.InitBool("xsq.evc.plug.present", SM_STALE_MIN, false);
 
   mt_bms_CV_Range_min = MyMetrics.InitFloat("xsq.bms.cv.range.min", SM_STALE_MID, 0, Volts);
   mt_bms_CV_Range_max = MyMetrics.InitFloat("xsq.bms.cv.range.max", SM_STALE_MID, 0, Volts);
@@ -138,6 +144,10 @@ OvmsVehicleSmartEQ::OvmsVehicleSmartEQ() {
   mt_obl_main_amps = new OvmsMetricVector<float>("xsq.obl.amps", SM_STALE_HIGH, Amps);
   mt_obl_main_CHGpower = new OvmsMetricVector<float>("xsq.obl.power", SM_STALE_HIGH, kW);
   mt_obl_main_freq = MyMetrics.InitFloat("xsq.obl.freq", SM_STALE_MID, 0, Other);
+  
+  mt_ocs_mt_day_prewarn         = MyMetrics.InitInt("xsq.ocs.mt.day.prewarn", SM_STALE_MID, 45, Other);
+  mt_ocs_mt_day                 = MyMetrics.InitInt("xsq.ocs.mt.day", SM_STALE_MID, 0, Other);
+  mt_ocs_mt_usualkm             = MyMetrics.InitInt("xsq.ocs.mt.usualkm", SM_STALE_MID, 0, Kilometers);
   
   // standard settings
   StdMetrics.ms_v_bat_cac->SetValue(42);
@@ -252,7 +262,7 @@ void OvmsVehicleSmartEQ::IncomingFrameCan1(CAN_frame_t* p_frame) {
   
   static bool isCharging = false;
   static bool lastCharging = false;
-  float _range_est;
+  float _range_est, _temp;
 
   if (m_candata_poll != 1 && StandardMetrics.ms_v_bat_voltage->AsFloat(0, Volts) > 100) {
     ESP_LOGI(TAG,"Car has woken (CAN bus activity)");
@@ -270,8 +280,9 @@ void OvmsVehicleSmartEQ::IncomingFrameCan1(CAN_frame_t* p_frame) {
       StandardMetrics.ms_v_env_cabintemp->SetValue(CAN_BYTE(5) - 40);
       break;
     case 0x42E: // HV Voltage
+      _temp = ((c >> 13) & 0x7Fu) > 40.0 ? ((c >> 13) & 0x7Fu) - 40.0 : (40.0 - ((c >> 13) & 0x7Fu)) * -1;
+      StandardMetrics.ms_v_bat_temp->SetValue(_temp); // HVBatteryTemperature
       StandardMetrics.ms_v_bat_voltage->SetValue((float) ((CAN_UINT(3)>>5)&0x3ff) / 2); // HV Voltage
-      StandardMetrics.ms_v_bat_temp->SetValue(((c >> 13) & 0x7Fu) - 40); // HVBatteryTemp
       StandardMetrics.ms_v_charge_climit->SetValue((c >> 20) & 0x3Fu); // MaxChargingNegotiatedCurrent
       break;
     case 0x4F8:

@@ -123,6 +123,8 @@ class OvmsVehicleSmartEQ : public OvmsVehicle
     void PollReply_EVC_DCDC_Load(const char* data, uint16_t reply_len);
     void PollReply_EVC_DCDC_Amps(const char* data, uint16_t reply_len);
     void PollReply_EVC_DCDC_Power(const char* data, uint16_t reply_len);
+    void PollReply_EVC_ext_power(const char* data, uint16_t reply_len);
+    void PollReply_EVC_plug_present(const char* data, uint16_t reply_len);
     void PollReply_OBL_ChargerAC(const char* data, uint16_t reply_len);
     void PollReply_OBL_JB2AC_Ph1_RMS_A(const char* data, uint16_t reply_len);
     void PollReply_OBL_JB2AC_Ph2_RMS_A(const char* data, uint16_t reply_len);
@@ -131,6 +133,9 @@ class OvmsVehicleSmartEQ : public OvmsVehicle
     void PollReply_OBL_JB2AC_Ph23_RMS_V(const char* data, uint16_t reply_len);
     void PollReply_OBL_JB2AC_Ph31_RMS_V(const char* data, uint16_t reply_len);
     void PollReply_OBL_JB2AC_Power(const char* data, uint16_t reply_len);
+    void PollReply_ocs_mt_km(const char* data, uint16_t reply_len);
+    void PollReply_ocs_mt_day(const char* data, uint16_t reply_len);
+    void PollReply_ocs_mt_range(const char* data, uint16_t reply_len);
 
   protected:
     bool m_enable_write;                    // canwrite
@@ -161,6 +166,8 @@ class OvmsVehicleSmartEQ : public OvmsVehicle
     OvmsMetricFloat         *mt_evc_LV_DCDC_load;       //!< load in % of DC/DC LV system, not 12V battery!
     OvmsMetricFloat         *mt_evc_LV_DCDC_power;      //!< power in W (x/10) of DC/DC output of LV system, not 12V battery!
     OvmsMetricInt           *mt_evc_LV_DCDC_state;      //!< DC/DC state
+    OvmsMetricBool          *mt_evc_ext_power;          //!< indicates ext power supply
+    OvmsMetricBool          *mt_evc_plug_present;       //!< charging plug present
     OvmsMetricFloat         *mt_bms_CV_Range_min;       //!< minimum cell voltage in V, no offset
     OvmsMetricFloat         *mt_bms_CV_Range_max;       //!< maximum cell voltage in V, no offset
     OvmsMetricFloat         *mt_bms_CV_Range_mean;      //!< average cell voltage in V, no offset
@@ -180,6 +187,9 @@ class OvmsVehicleSmartEQ : public OvmsVehicle
     OvmsMetricVector<float> *mt_obl_main_volts;         //!< AC voltage of L1, L2, L3
     OvmsMetricVector<float> *mt_obl_main_CHGpower;      //!< Power of rail1, rail2 W (x/2) & max available kw (x/64)
     OvmsMetricFloat         *mt_obl_main_freq;          //!< AC input frequency
+    OvmsMetricInt           *mt_ocs_mt_day_prewarn;     //!< Maintaince pre warning days
+    OvmsMetricInt           *mt_ocs_mt_day;             //!< Maintaince day
+    OvmsMetricInt           *mt_ocs_mt_usualkm;         //!< Maintaince usual km
 
   protected:
     bool m_booster_start;

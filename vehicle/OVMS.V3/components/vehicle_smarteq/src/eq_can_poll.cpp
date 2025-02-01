@@ -109,6 +109,12 @@ void OvmsVehicleSmartEQ::IncomingPollReply(const OvmsPoller::poll_job_t &job, ui
         case 0x3494: // rqDCDC_Power
           PollReply_EVC_DCDC_Power(m_rxbuf.data(), m_rxbuf.size());
           break;
+        case 0x33BA: // indicates ext power supply
+          PollReply_EVC_ext_power(m_rxbuf.data(), m_rxbuf.size());
+          break;
+        case 0x339D: // charging plug present
+          PollReply_EVC_plug_present(m_rxbuf.data(), m_rxbuf.size());
+          break;
       }
     case 0x7BB:
       switch (job.pid) {
@@ -165,6 +171,12 @@ void OvmsVehicleSmartEQ::IncomingPollReply(const OvmsPoller::poll_job_t &job, ui
       switch (job.pid) {
         case 0x200c: // temperature sensor values
           PollReply_TDB(m_rxbuf.data(), m_rxbuf.size());
+          break;
+        case 0x0204: // maintenance data days
+          PollReply_ocs_mt_day(m_rxbuf.data(), m_rxbuf.size());
+          break;
+        case 0x0203: // maintenance data usual distance
+          PollReply_ocs_mt_range(m_rxbuf.data(), m_rxbuf.size());
           break;
       }
       break;
@@ -272,14 +284,15 @@ void OvmsVehicleSmartEQ::PollReply_HVAC(const char* data, uint16_t reply_len) {
 }
 
 void OvmsVehicleSmartEQ::PollReply_TDB(const char* data, uint16_t reply_len) {
-  StandardMetrics.ms_v_env_temp->SetValue( (CAN_UINT(2) - 400) * 0.1 );
+  //float temp = (float) (CAN_UINT(2) - 400) * 0.1;
+  float temp = (float) (CAN_UINT(2)) > 400.0 ? (float) (CAN_UINT(2) - 400.0) * 0.1 : (float) (400.0 - CAN_UINT(2)) * -0.1;
+  float temptpms = temp > 1.0 ? temp : 1.1;
+  StandardMetrics.ms_v_env_temp->SetValue(temp);
   if (m_ios_tpms_fix) {
-    float temp = (float) (CAN_UINT(2) - 400) * 0.1;
-    if (temp < 1.0f) temp = 1.0;
-    StandardMetrics.ms_v_tpms_temp->SetElemValue(MS_V_TPMS_IDX_RR, temp);
-    StandardMetrics.ms_v_tpms_temp->SetElemValue(MS_V_TPMS_IDX_RL, temp);
-    StandardMetrics.ms_v_tpms_temp->SetElemValue(MS_V_TPMS_IDX_FR, temp);
-    StandardMetrics.ms_v_tpms_temp->SetElemValue(MS_V_TPMS_IDX_FL, temp);
+    StandardMetrics.ms_v_tpms_temp->SetElemValue(MS_V_TPMS_IDX_RR, temptpms);
+    StandardMetrics.ms_v_tpms_temp->SetElemValue(MS_V_TPMS_IDX_RL, temptpms);
+    StandardMetrics.ms_v_tpms_temp->SetElemValue(MS_V_TPMS_IDX_FR, temptpms);
+    StandardMetrics.ms_v_tpms_temp->SetElemValue(MS_V_TPMS_IDX_FL, temptpms);
   }
 }
 
@@ -308,6 +321,14 @@ void OvmsVehicleSmartEQ::PollReply_EVC_DCDC_Amps(const char* data, uint16_t repl
 
 void OvmsVehicleSmartEQ::PollReply_EVC_DCDC_Power(const char* data, uint16_t reply_len) {
   mt_evc_LV_DCDC_state->SetValue( CAN_UINT(0) );
+}
+
+void OvmsVehicleSmartEQ::PollReply_EVC_ext_power(const char* data, uint16_t reply_len) {
+  mt_evc_ext_power->SetValue(CAN_UINT(0)>0);
+}
+
+void OvmsVehicleSmartEQ::PollReply_EVC_plug_present(const char* data, uint16_t reply_len) {
+  mt_evc_plug_present->SetValue(CAN_UINT(0)>0);
 }
 
 void OvmsVehicleSmartEQ::PollReply_OBL_ChargerAC(const char* data, uint16_t reply_len) {
@@ -389,4 +410,29 @@ void OvmsVehicleSmartEQ::PollReply_OBL_JB2AC_Ph31_RMS_V(const char* data, uint16
 void OvmsVehicleSmartEQ::PollReply_OBL_JB2AC_Power(const char* data, uint16_t reply_len) {
   mt_obl_main_CHGpower->SetElemValue(0, (CAN_UINT(0) - 20000) / 1000.0);
   UpdateChargeMetrics();
+}
+
+void OvmsVehicleSmartEQ::PollReply_ocs_mt_day(const char* data, uint16_t reply_len) {
+  int value = CAN_UINT(0);
+  if (value > 0) { // excluding value of 0 seems to be necessary for now
+    // Send notification?
+    int now = StandardMetrics.ms_m_timeutc->AsInt();
+    int threshold = mt_ocs_mt_day_prewarn->AsInt();
+    int old_value = ROUNDPREC((StandardMetrics.ms_v_env_service_time->AsInt() - now) / 86400, 0);
+    if (old_value > threshold && value <= threshold) {
+      MyNotify.NotifyStringf("info", "serv.time", "Service time left: %d days!", value);
+      mt_ocs_mt_day_prewarn->SetValue(threshold - 5); // send notification only once per threshold, todo: make configurable???
+    }
+    // reset prewarn value after service time has been increased
+    if (value > 100 && threshold < 100) {
+      mt_ocs_mt_day_prewarn->SetValue(45);  // default value 45 days, todo: make configurable???
+    }
+    mt_ocs_mt_day->SetValue(value); // set next service in days
+    StandardMetrics.ms_v_env_service_time->SetValue(StandardMetrics.ms_m_timeutc->AsInt() + value * 86400);  // set next service at time
+  }
+}
+
+void OvmsVehicleSmartEQ::PollReply_ocs_mt_range(const char* data, uint16_t reply_len) {
+  StandardMetrics.ms_v_env_service_range->SetValue(CAN_UINT(0));
+  mt_ocs_mt_usualkm->SetValue(CAN_UINT(0));
 }
