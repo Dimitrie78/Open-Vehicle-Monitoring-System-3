@@ -220,14 +220,18 @@ class canfilter
 
   public:
     void ClearFilters();
-    void AddFilter(uint8_t bus=0, uint32_t id_from=0, uint32_t id_to=UINT32_MAX);
-    void AddFilter(const char* filterstring);
+    bool AddFilter(uint8_t bus=0, uint32_t id_from=0, uint32_t id_to=UINT32_MAX);
+    bool AddFilter(const char* filterstring);
     bool RemoveFilter(uint8_t bus=0, uint32_t id_from=0, uint32_t id_to=UINT32_MAX);
 
   public:
     bool IsFiltered(const CAN_frame_t* p_frame);
     bool IsFiltered(canbus* bus);
     std::string Info();
+    bool HasFilters()
+      {
+      return !m_filters.empty();
+      }
 
   protected:
     CAN_filter_list_t m_filters;
@@ -390,7 +394,7 @@ class can : public InternalRamAllocated
     int ExecuteCallbacks(const CAN_frame_t* frame, bool tx, bool success);
 
   public:
-    uint32_t AddLogger(canlog* logger, int filterc=0, const char* const* filterv=NULL);
+    uint32_t AddLogger(canlog* logger, int filterc=0, const char* const* filterv=NULL, OvmsWriter* writer=NULL);
     bool HasLogger();
     canlog* GetLogger(uint32_t id);
     bool RemoveLogger(uint32_t id);
