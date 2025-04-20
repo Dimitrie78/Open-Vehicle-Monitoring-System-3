@@ -1,6 +1,11 @@
 Open Vehicle Monitor System v3 - Change log
 
 ????-??-?? ???  ???????  OTA release
+- Nissan Leaf:
+    ZE1 inital release
+    Fix: Poll state not set to off when charging stopped by OVMS
+    Enh: SOH_instrument now float not int to support ZE1 instrument values 
+    Enh: Copy v.b.p.temp.max to v.b.temp so that max battery temp displays in app
 - Smart EQ 453:
     DDT4all simple support, a full List of commands at www.smart-EMOTION.de
 - VW e-Up: decode & display battery cell level health status,
@@ -21,6 +26,8 @@ Open Vehicle Monitor System v3 - Change log
     can <bus> explain [errorflags]    -- Decode error flags into human readable text 
 - DBC Files
   Add unit support
+  Add extended signals/multiplexing support
+  Add support for enum values.
 - OVMS Server v3: Ability to define less frequent MQTT communication to save data charges and power
   Events:
     Excludes clock.* events from being published at the start of every minute.
@@ -64,7 +71,7 @@ Open Vehicle Monitor System v3 - Change log
   New commands:
     vehicle aux [status]
     vehicle aux monitor [status]
-    vehicle aux monitor enable
+    vehicle aux monitor enable [[low-threshold] [charging-threshold]]
     vehicle aux monitor disable
   Duktape Support:
     OvmsVehicle.AuxMon.Enable
