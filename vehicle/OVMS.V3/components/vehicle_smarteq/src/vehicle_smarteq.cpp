@@ -277,7 +277,7 @@ OvmsVehicleSmartEQ::OvmsVehicleSmartEQ() {
     ResetTripCounters();
   }
 
-  CommandWakeup();                                             // wake up the car to get the first data
+  // CommandWakeup();                                          // wake up the car to get the first data !!! Not good idea. It can depleat the 12v Batterie !!!
   setTPMSValueBoot();                                          // set TPMS dummy values to 0
 
 #ifdef CONFIG_OVMS_COMP_CELLULAR
