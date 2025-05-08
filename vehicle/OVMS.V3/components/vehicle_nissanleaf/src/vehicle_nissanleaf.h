@@ -167,13 +167,14 @@ class OvmsVehicleNissanLeaf : public OvmsVehicle
     virtual int GetNotifyChargeStateDelay(const char* state);
     RemoteCommand nl_remote_command; // command to send, see RemoteCommandTimer()
     uint8_t nl_remote_command_ticker; // number remaining remote command frames to send
-    void PollReply_Battery(uint8_t reply_data[], uint16_t reply_len);
-    void PollReply_QC(uint8_t reply_data[], uint16_t reply_len);
-    void PollReply_L0L1L2(uint8_t reply_data[], uint16_t reply_len);
-    void PollReply_VIN(uint8_t reply_data[], uint16_t reply_len);
-    void PollReply_BMS_Volt(uint8_t reply_data[], uint16_t reply_len);
-    void PollReply_BMS_Shunt(uint8_t reply_data[], uint16_t reply_len);
-    void PollReply_BMS_Temp(uint8_t reply_data[], uint16_t reply_len);
+    void PollReply_Battery(const uint8_t *reply_data, uint16_t reply_len);
+    void PollReply_QC(const uint8_t *reply_data, uint16_t reply_len);
+    void PollReply_L0L1L2(const uint8_t *reply_data, uint16_t reply_len);
+    void PollReply_VIN(const uint8_t *reply_data, uint16_t reply_len);
+    void PollReply_BMS_Volt(const uint8_t *reply_data, uint16_t reply_len);
+    void PollReply_BMS_Shunt(const uint8_t *reply_data, uint16_t reply_len);
+    void PollReply_BMS_Temp(const uint8_t *reply_data, uint16_t reply_len);
+    void PollReply_BMS_SOH(const uint8_t *reply_data, uint16_t reply_len);
 
     TimerHandle_t m_remoteCommandTimer;
     TimerHandle_t m_ccDisableTimer;
@@ -188,8 +189,11 @@ class OvmsVehicleNissanLeaf : public OvmsVehicle
     OvmsMetricVector<int> *m_bms_thermistor;
     OvmsMetricVector<int> *m_bms_temp_int;
     OvmsMetricBitset<96> *m_bms_balancing;
+    /// @brief State of health - calculated
+    /// @note ah / new car ah * 100
     OvmsMetricFloat *m_soh_new_car;
-    OvmsMetricInt *m_soh_instrument;
+    /// @brief State of health - read from BMS
+    OvmsMetricFloat *m_soh_instrument;
     OvmsMetricFloat *m_battery_energy_capacity;
     OvmsMetricFloat *m_battery_energy_available;
     OvmsMetricInt *m_battery_type;
@@ -227,6 +231,8 @@ class OvmsVehicleNissanLeaf : public OvmsVehicle
     int    cfg_allowed_socdrop;                         // Allowed drop of SOC after charging
     bool   cfg_enable_write;                            // Enable/disable can write (polling and commands
     bool   cfg_enable_autocharge;                       // Enable/disable automatic charge control based on SOC or range
+    bool   cfg_ze1;                                     // Enable/disable ZE1 specific features
+    bool   cfg_soh_newcar;                              // True if SOH is calculated from new car max ah, false if from BMS
     string cfg_limit_range_calc;                        // What range calc to use for charge to range feature
 
     int     m_MITM = 0;
@@ -238,6 +244,7 @@ class OvmsVehicleNissanLeaf : public OvmsVehicle
 	  bool    m_AZE0_charger;							    // True if 2013+ AZE0 LEAF with 0x390 message (Gen 2)
     bool    m_climate_really_off;           // Needed for AZE0 to shown correct hvac status while charging
 
+    OvmsPoller::poll_pid_t* obdii_polls;
 
   protected:
     OvmsCommand*        cmd_xnl;
