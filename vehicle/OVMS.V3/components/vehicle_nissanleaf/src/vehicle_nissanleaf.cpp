@@ -325,6 +325,7 @@ void OvmsVehicleNissanLeaf::ConfigChanged(OvmsConfigParam* param)
   cfg_allowed_rangedrop     = MyConfig.GetParamValueInt("xnl", "rangedrop", DEFAULT_RANGEDROP);
   cfg_allowed_socdrop       = MyConfig.GetParamValueInt("xnl", "socdrop", DEFAULT_SOCDROP);
   cfg_enable_autocharge     = MyConfig.GetParamValueBool("xnl", "autocharge", DEFAULT_AUTOCHARGE_ENABLED);
+  cfg_speed_divisor         = MyConfig.GetParamValueFloat("xnl", "speeddivisor", DEFAULT_SPEED_DIVISOR);
 
 
   //TODO nl_enable_write = MyConfig.GetParamValueBool("xnl", "canwrite", false);
@@ -348,6 +349,7 @@ void OvmsVehicleNissanLeaf::vehicle_nissanleaf_car_on(bool isOn)
     // if a can message is found with the state of charge port this can removed
     StandardMetrics.ms_v_door_chargeport->SetValue(false); 
     // Reset trip values
+    ResetTripCounters();
     StandardMetrics.ms_v_bat_energy_recd->SetValue(0);
     StandardMetrics.ms_v_bat_energy_used->SetValue(0);
     m_cum_energy_recd_wh = 0.0f;
@@ -1069,9 +1071,20 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan1(CAN_frame_t* p_frame)
       uint16_t car_speed16 = d[4];
       car_speed16 = car_speed16 << 8;
       car_speed16 = car_speed16 | d[5];
-      // this ratio determined by comparing with the dashboard speedometer
-      // it is approximately correct and converts to km/h on my car with km/h speedo
-      StandardMetrics.ms_v_pos_speed->SetValue(car_speed16 / 92);
+      // old ratio was 1/92, previously approximated by comparison with dashboard speedo.
+      // however, this figure appears to be ~4-4.5% lower than the speedometer speed, AND the
+      // speedometer speed is itself 10% higher than the actual speed reported by OBD-II standard
+      // PIDs and GPS speed (probably due to regulations allowing speedo speed to be up to 10%
+      // higher but not any lower than actual speed)
+
+      // dividing this value by 98 makes it approximately match OBD-II and GPS reported speeds,
+      // allowing us to use it for deriving accurate trip odometer distances
+
+      // verified by comparing derived trip odometer value with two ~20km GPS tracks
+      StandardMetrics.ms_v_pos_speed->SetValue((float) car_speed16 / cfg_speed_divisor);
+
+      // update our trip odometer estimate now that we've got a fresh speed reading
+      UpdateTripCounters();
     }
       break;
     case 0x380:
@@ -2262,7 +2275,7 @@ void OvmsVehicleNissanLeaf::HandleCharging()
  */
 int OvmsVehicleNissanLeaf::calcMinutesRemaining(float target_soc, float charge_power_w)
   { // updated to allow for V2X calculation
-  float bat_soc = m_soc_instrument->AsFloat(100);
+  float bat_soc = StandardMetrics.ms_v_bat_soc->AsFloat(100);
   if ( (bat_soc > target_soc && charge_power_w > 0) || (bat_soc < target_soc && charge_power_w < 0) )
     {
     return 0;   // Done!
@@ -2340,6 +2353,40 @@ void OvmsVehicleNissanLeaf::HandleRange()
   ESP_LOGV(TAG, "Range: ideal=%0.0f km, est=%0.0f km, full=%0.0f km", range_ideal, range_est, range_full);
   }
 
+/**
+ * Reset trip counters when vehicle is turned on, including energy usage values
+ */
+void OvmsVehicleNissanLeaf::ResetTripCounters()
+  {
+  StdMetrics.ms_v_pos_trip->SetValue(0);
+  m_trip_odo            = 0;
+  m_trip_last_upd_time  = esp_log_timestamp();
+  m_trip_last_upd_speed = StdMetrics.ms_v_pos_speed->AsFloat();
+  }
+
+/**
+ * Increment trip odometer and v.p.trip based on distance derived from speed
+ *
+ * Odometer granularity seems to be 1km, that's not really precise enough
+ */
+void OvmsVehicleNissanLeaf::UpdateTripCounters()
+  {
+  uint32_t now = esp_log_timestamp();
+  float speed = StdMetrics.ms_v_pos_speed->AsFloat();
+
+  if (m_trip_last_upd_time && now > m_trip_last_upd_time) {
+    float speed_avg = ABS(speed + m_trip_last_upd_speed) / 2;
+    uint32_t time_ms = now - m_trip_last_upd_time;
+
+    // 1 m/s = 3.6 km/h
+    double dist_meters = speed_avg / 3.6 * time_ms / 1000;
+    m_trip_odo += dist_meters / 1000;
+    StdMetrics.ms_v_pos_trip->SetValue(TRUNCPREC(m_trip_odo, 3));
+  }
+
+  m_trip_last_upd_time = now;
+  m_trip_last_upd_speed = speed;
+  }
 
 ////////////////////////////////////////////////////////////////////////
 // Wake up the car & send Climate Control or Remote Charge message to VCU,

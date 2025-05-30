@@ -51,6 +51,7 @@
 #define DEFAULT_RANGEDROP 0
 #define DEFAULT_SOCDROP 0
 #define DEFAULT_AUTOCHARGE_ENABLED true
+#define DEFAULT_SPEED_DIVISOR 98.0
 #define GEN_1_NEW_CAR_GIDS 281
 #define GEN_1_NEW_CAR_AH 66
 #define GEN_1_KM_PER_KWH 7.1
@@ -175,6 +176,8 @@ class OvmsVehicleNissanLeaf : public OvmsVehicle
     void PollReply_BMS_Shunt(const uint8_t *reply_data, uint16_t reply_len);
     void PollReply_BMS_Temp(const uint8_t *reply_data, uint16_t reply_len);
     void PollReply_BMS_SOH(const uint8_t *reply_data, uint16_t reply_len);
+    void ResetTripCounters();
+    void UpdateTripCounters();
 
     TimerHandle_t m_remoteCommandTimer;
     TimerHandle_t m_ccDisableTimer;
@@ -234,15 +237,19 @@ class OvmsVehicleNissanLeaf : public OvmsVehicle
     bool   cfg_ze1;                                     // Enable/disable ZE1 specific features
     bool   cfg_soh_newcar;                              // True if SOH is calculated from new car max ah, false if from BMS
     string cfg_limit_range_calc;                        // What range calc to use for charge to range feature
+    float  cfg_speed_divisor;                           // Divisor used for dividing raw speed value received from can1 0x284 msg
 
-    int     m_MITM = 0;
-    float   m_cum_energy_used_wh;				    // Cumulated energy (in wh) used within 1 second ticker interval
-    float   m_cum_energy_recd_wh; 					// Cumulated energy (in wh) recovered  within 1 second ticker interval
-    float   m_cum_energy_charge_wh;					// Cumulated energy (in wh) charged within 10 second ticker interval
-    float   m_cum_energy_gen_wh;					  // Cumulated energy (in wh) exported within 10 second ticker interval
-    bool    m_ZE0_charger;					        // True if 2011-2012 ZE0 LEAF with 0x380 message (Gen 1)
-	  bool    m_AZE0_charger;							    // True if 2013+ AZE0 LEAF with 0x390 message (Gen 2)
-    bool    m_climate_really_off;           // Needed for AZE0 to shown correct hvac status while charging
+    int         m_MITM = 0;
+    double      m_trip_odo;                             // trip distance estimated from speed
+    uint32_t    m_trip_last_upd_time;                  // timestamp as of last trip counter update
+    float       m_trip_last_upd_speed;                 // speed as of last trip counter update
+    float       m_cum_energy_used_wh;                   // Cumulated energy (in wh) used within 1 second ticker interval
+    float       m_cum_energy_recd_wh;                   // Cumulated energy (in wh) recovered  within 1 second ticker interval
+    float       m_cum_energy_charge_wh;                 // Cumulated energy (in wh) charged within 10 second ticker interval
+    float       m_cum_energy_gen_wh;                    // Cumulated energy (in wh) exported within 10 second ticker interval
+    bool        m_ZE0_charger;                          // True if 2011-2012 ZE0 LEAF with 0x380 message (Gen 1)
+    bool        m_AZE0_charger;                         // True if 2013+ AZE0 LEAF with 0x390 message (Gen 2)
+    bool        m_climate_really_off;                   // Needed for AZE0 to shown correct hvac status while charging
 
     OvmsPoller::poll_pid_t* obdii_polls;
 
