@@ -51,6 +51,7 @@
 #define DEFAULT_RANGEDROP 0
 #define DEFAULT_SOCDROP 0
 #define DEFAULT_AUTOCHARGE_ENABLED true
+#define DEFAULT_SPEED_DIVISOR 98.0
 #define GEN_1_NEW_CAR_GIDS 281
 #define GEN_1_NEW_CAR_AH 66
 #define GEN_1_KM_PER_KWH 7.1
@@ -167,13 +168,16 @@ class OvmsVehicleNissanLeaf : public OvmsVehicle
     virtual int GetNotifyChargeStateDelay(const char* state);
     RemoteCommand nl_remote_command; // command to send, see RemoteCommandTimer()
     uint8_t nl_remote_command_ticker; // number remaining remote command frames to send
-    void PollReply_Battery(uint8_t reply_data[], uint16_t reply_len);
-    void PollReply_QC(uint8_t reply_data[], uint16_t reply_len);
-    void PollReply_L0L1L2(uint8_t reply_data[], uint16_t reply_len);
-    void PollReply_VIN(uint8_t reply_data[], uint16_t reply_len);
-    void PollReply_BMS_Volt(uint8_t reply_data[], uint16_t reply_len);
-    void PollReply_BMS_Shunt(uint8_t reply_data[], uint16_t reply_len);
-    void PollReply_BMS_Temp(uint8_t reply_data[], uint16_t reply_len);
+    void PollReply_Battery(const uint8_t *reply_data, uint16_t reply_len);
+    void PollReply_QC(const uint8_t *reply_data, uint16_t reply_len);
+    void PollReply_L0L1L2(const uint8_t *reply_data, uint16_t reply_len);
+    void PollReply_VIN(const uint8_t *reply_data, uint16_t reply_len);
+    void PollReply_BMS_Volt(const uint8_t *reply_data, uint16_t reply_len);
+    void PollReply_BMS_Shunt(const uint8_t *reply_data, uint16_t reply_len);
+    void PollReply_BMS_Temp(const uint8_t *reply_data, uint16_t reply_len);
+    void PollReply_BMS_SOH(const uint8_t *reply_data, uint16_t reply_len);
+    void ResetTripCounters();
+    void UpdateTripCounters();
 
     TimerHandle_t m_remoteCommandTimer;
     TimerHandle_t m_ccDisableTimer;
@@ -188,8 +192,11 @@ class OvmsVehicleNissanLeaf : public OvmsVehicle
     OvmsMetricVector<int> *m_bms_thermistor;
     OvmsMetricVector<int> *m_bms_temp_int;
     OvmsMetricBitset<96> *m_bms_balancing;
+    /// @brief State of health - calculated
+    /// @note ah / new car ah * 100
     OvmsMetricFloat *m_soh_new_car;
-    OvmsMetricInt *m_soh_instrument;
+    /// @brief State of health - read from BMS
+    OvmsMetricFloat *m_soh_instrument;
     OvmsMetricFloat *m_battery_energy_capacity;
     OvmsMetricFloat *m_battery_energy_available;
     OvmsMetricInt *m_battery_type;
@@ -227,17 +234,24 @@ class OvmsVehicleNissanLeaf : public OvmsVehicle
     int    cfg_allowed_socdrop;                         // Allowed drop of SOC after charging
     bool   cfg_enable_write;                            // Enable/disable can write (polling and commands
     bool   cfg_enable_autocharge;                       // Enable/disable automatic charge control based on SOC or range
+    bool   cfg_ze1;                                     // Enable/disable ZE1 specific features
+    bool   cfg_soh_newcar;                              // True if SOH is calculated from new car max ah, false if from BMS
     string cfg_limit_range_calc;                        // What range calc to use for charge to range feature
+    float  cfg_speed_divisor;                           // Divisor used for dividing raw speed value received from can1 0x284 msg
 
-    int     m_MITM = 0;
-    float   m_cum_energy_used_wh;				    // Cumulated energy (in wh) used within 1 second ticker interval
-    float   m_cum_energy_recd_wh; 					// Cumulated energy (in wh) recovered  within 1 second ticker interval
-    float   m_cum_energy_charge_wh;					// Cumulated energy (in wh) charged within 10 second ticker interval
-    float   m_cum_energy_gen_wh;					  // Cumulated energy (in wh) exported within 10 second ticker interval
-    bool    m_ZE0_charger;					        // True if 2011-2012 ZE0 LEAF with 0x380 message (Gen 1)
-	  bool    m_AZE0_charger;							    // True if 2013+ AZE0 LEAF with 0x390 message (Gen 2)
-    bool    m_climate_really_off;           // Needed for AZE0 to shown correct hvac status while charging
+    int         m_MITM = 0;
+    double      m_trip_odo;                             // trip distance estimated from speed
+    uint32_t    m_trip_last_upd_time;                  // timestamp as of last trip counter update
+    float       m_trip_last_upd_speed;                 // speed as of last trip counter update
+    float       m_cum_energy_used_wh;                   // Cumulated energy (in wh) used within 1 second ticker interval
+    float       m_cum_energy_recd_wh;                   // Cumulated energy (in wh) recovered  within 1 second ticker interval
+    float       m_cum_energy_charge_wh;                 // Cumulated energy (in wh) charged within 10 second ticker interval
+    float       m_cum_energy_gen_wh;                    // Cumulated energy (in wh) exported within 10 second ticker interval
+    bool        m_ZE0_charger;                          // True if 2011-2012 ZE0 LEAF with 0x380 message (Gen 1)
+    bool        m_AZE0_charger;                         // True if 2013+ AZE0 LEAF with 0x390 message (Gen 2)
+    bool        m_climate_really_off;                   // Needed for AZE0 to shown correct hvac status while charging
 
+    OvmsPoller::poll_pid_t* obdii_polls;
 
   protected:
     OvmsCommand*        cmd_xnl;

@@ -220,8 +220,8 @@ class canfilter
 
   public:
     void ClearFilters();
-    void AddFilter(uint8_t bus=0, uint32_t id_from=0, uint32_t id_to=UINT32_MAX);
-    void AddFilter(const char* filterstring);
+    bool AddFilter(uint8_t bus=0, uint32_t id_from=0, uint32_t id_to=UINT32_MAX);
+    bool AddFilter(const char* filterstring);
     bool RemoveFilter(uint8_t bus=0, uint32_t id_from=0, uint32_t id_to=UINT32_MAX);
 
   public:
@@ -328,6 +328,7 @@ class canbus : public pcp, public InternalRamAllocated
     bool StatusChanged();
     CAN_errorstate_t GetErrorState();
     const char* GetErrorStateName();
+    virtual bool GetErrorFlagsDesc(std::string &buffer, uint32_t error_flags);
 
   public:
     CAN_speed_t m_speed;
@@ -390,11 +391,12 @@ class can : public InternalRamAllocated
 
   public:
     void RegisterCallback(const char* caller, CanFrameCallback callback, bool txfeedback=false);
+    void RegisterCallbackFront(const char* caller, CanFrameCallback callback, bool txfeedback=false);
     void DeregisterCallback(const char* caller);
     int ExecuteCallbacks(const CAN_frame_t* frame, bool tx, bool success);
 
   public:
-    uint32_t AddLogger(canlog* logger, int filterc=0, const char* const* filterv=NULL);
+    uint32_t AddLogger(canlog* logger, int filterc=0, const char* const* filterv=NULL, OvmsWriter* writer=NULL);
     bool HasLogger();
     canlog* GetLogger(uint32_t id);
     bool RemoveLogger(uint32_t id);
