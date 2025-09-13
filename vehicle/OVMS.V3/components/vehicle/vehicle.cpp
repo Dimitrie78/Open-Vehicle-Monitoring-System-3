@@ -1770,6 +1770,7 @@ void OvmsVehicle::MetricModified(OvmsMetric* metric)
       }
     else
       {
+      StandardMetrics.ms_v_charge_timestamp->SetValue(StdMetrics.ms_m_timeutc->AsInt());
       MyEvents.SignalEvent("vehicle.charge.stop",NULL);
       NotifiedVehicleChargeStop();
       }
@@ -1813,6 +1814,48 @@ void OvmsVehicle::MetricModified(OvmsMetric* metric)
       NotifiedVehicleChargeTimermodeOff();
       }
     }
+
+  else if (metric == StandardMetrics.ms_v_gen_inprogress)
+    {
+    if (StandardMetrics.ms_v_gen_inprogress->AsBool())
+      {
+      MyEvents.SignalEvent("vehicle.gen.start",NULL);
+      NotifiedVehicleGenStart();
+      }
+    else
+      {
+      StandardMetrics.ms_v_gen_timestamp->SetValue(StdMetrics.ms_m_timeutc->AsInt());
+      MyEvents.SignalEvent("vehicle.gen.stop",NULL);
+      NotifiedVehicleGenStop();
+      }
+    }
+  else if (metric == StandardMetrics.ms_v_gen_pilot)
+    {
+    if (StandardMetrics.ms_v_gen_pilot->AsBool())
+      {
+      MyEvents.SignalEvent("vehicle.gen.pilot.on",NULL);
+      NotifiedVehicleGenPilotOn();
+      }
+    else
+      {
+      MyEvents.SignalEvent("vehicle.gen.pilot.off",NULL);
+      NotifiedVehicleGenPilotOff();
+      }
+    }
+  else if (metric == StandardMetrics.ms_v_gen_timermode)
+    {
+    if (StandardMetrics.ms_v_gen_timermode->AsBool())
+      {
+      MyEvents.SignalEvent("vehicle.gen.timermode.on",NULL);
+      NotifiedVehicleGenTimermodeOn();
+      }
+    else
+      {
+      MyEvents.SignalEvent("vehicle.gen.timermode.off",NULL);
+      NotifiedVehicleGenTimermodeOff();
+      }
+    }
+
   else if (metric == StandardMetrics.ms_v_env_aux12v)
     {
     if (StandardMetrics.ms_v_env_aux12v->AsBool())
@@ -2216,7 +2259,7 @@ void OvmsVehicle::NotifyGridLog()
 
   std::ostringstream buf;
   buf
-    << "*-LOG-Grid,1," << storetime_days * 86400        // V1, increment on additions
+    << "*-LOG-Grid,2," << storetime_days * 86400        // V2, increment on additions
 
     << std::noboolalpha
     << "," << (StdMetrics.ms_v_pos_gpslock->AsBool() ? 1 : 0)
@@ -2281,6 +2324,10 @@ void OvmsVehicle::NotifyGridLog()
     << "," << StdMetrics.ms_v_bat_energy_recd_total->AsFloat()
     << "," << StdMetrics.ms_v_bat_coulomb_used_total->AsFloat()
     << "," << StdMetrics.ms_v_bat_coulomb_recd_total->AsFloat()
+
+    // V2 additions:
+    << std::setprecision(1)
+    << "," << StdMetrics.ms_v_pos_odometer->AsFloat()
     ;
 
   MyNotify.NotifyString("data", "log.grid", buf.str().c_str());
@@ -2525,6 +2572,18 @@ void OvmsVehicle::PollSetState(uint8_t state, canbus* bus)
   }
 
 #ifdef CONFIG_OVMS_COMP_POLLER
+int OvmsVehicle::PollSingleRequest(canbus*  bus, uint32_t txid, uint32_t rxid,
+                  uint8_t polltype, uint16_t pid, const std::string &payload, std::string& response,
+                  int timeout_ms, uint8_t protocol)
+  {
+  if (!m_ready)
+    return POLLSINGLE_TXFAILURE;
+  auto poller = MyPollers.GetPoller(bus, true);
+  if (!poller)
+    return POLLSINGLE_TXFAILURE;
+  return poller->PollSingleRequest(txid, rxid, polltype, pid, payload, response, timeout_ms, protocol);
+  }
+
 int OvmsVehicle::PollSingleRequest(canbus* bus, uint32_t txid, uint32_t rxid,
                 std::string request, std::string& response,
                 int timeout_ms, uint8_t protocol)

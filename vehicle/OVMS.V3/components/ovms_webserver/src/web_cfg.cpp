@@ -876,11 +876,11 @@ void OvmsWebServer::HandleCfgVehicle(PageEntry_t& p, PageContext_t& c)
 
 #ifdef CONFIG_OVMS_COMP_CELLULAR
 /**
- * HandleCfgModem: configure APN & cellular modem features (URL /cfg/modem)
+ * HandleCfgModem: configure APN & cellular modem features & GPS (URL /cfg/modem)
  */
 void OvmsWebServer::HandleCfgModem(PageEntry_t& p, PageContext_t& c)
 {
-  std::string apn, apn_user, apn_pass, network_dns, pincode, error, gps_parkpause;
+  std::string apn, apn_user, apn_pass, network_dns, pincode, error, gps_parkpause, gps_parkreactivate, gps_parkreactlock, vehicle_stream;
   bool enable_gps, enable_gpstime, enable_net, enable_sms, wrongpincode;
   float cfg_sq_good, cfg_sq_bad;
 
@@ -896,6 +896,9 @@ void OvmsWebServer::HandleCfgModem(PageEntry_t& p, PageContext_t& c)
     enable_gps = (c.getvar("enable_gps") == "yes");
     enable_gpstime = (c.getvar("enable_gpstime") == "yes");
     gps_parkpause = c.getvar("gps_parkpause");
+    gps_parkreactivate = c.getvar("gps_parkreactivate");
+    gps_parkreactlock = c.getvar("gps_parkreactlock");
+    vehicle_stream = c.getvar("vehicle_stream");
     cfg_sq_good = atof(c.getvar("cfg_sq_good").c_str());
     cfg_sq_bad = atof(c.getvar("cfg_sq_bad").c_str());
 
@@ -920,7 +923,12 @@ void OvmsWebServer::HandleCfgModem(PageEntry_t& p, PageContext_t& c)
       MyConfig.SetParamValueBool("modem", "enable.gps", enable_gps);
       MyConfig.SetParamValueBool("modem", "enable.gpstime", enable_gpstime);
       MyConfig.SetParamValue("modem", "gps.parkpause", gps_parkpause);
-
+      MyConfig.SetParamValue("modem", "gps.parkreactivate", gps_parkreactivate);
+      MyConfig.SetParamValue("modem", "gps.parkreactlock", gps_parkreactlock);
+      if (vehicle_stream == "0")
+        MyConfig.DeleteInstance("vehicle", "stream");
+      else
+        MyConfig.SetParamValue("vehicle", "stream", vehicle_stream);
       MyConfig.SetParamValueFloat("network", "modem.sq.good", cfg_sq_good);
       MyConfig.SetParamValueFloat("network", "modem.sq.bad", cfg_sq_bad);
     }
@@ -953,7 +961,10 @@ void OvmsWebServer::HandleCfgModem(PageEntry_t& p, PageContext_t& c)
   enable_sms = MyConfig.GetParamValueBool("modem", "enable.sms", true);
   enable_gps = MyConfig.GetParamValueBool("modem", "enable.gps", false);
   enable_gpstime = MyConfig.GetParamValueBool("modem", "enable.gpstime", false);
-  gps_parkpause = MyConfig.GetParamValue("modem", "gps.parkpause");
+  gps_parkpause = MyConfig.GetParamValue("modem", "gps.parkpause","0");
+  gps_parkreactivate = MyConfig.GetParamValue("modem", "gps.parkreactivate","0");
+  gps_parkreactlock = MyConfig.GetParamValue("modem", "gps.parkreactlock","5");
+  vehicle_stream = MyConfig.GetParamValue("vehicle", "stream","0");
   cfg_sq_good = MyConfig.GetParamValueFloat("network", "modem.sq.good", -93);
   cfg_sq_bad = MyConfig.GetParamValueFloat("network", "modem.sq.bad", -95);
 
@@ -1001,12 +1012,6 @@ void OvmsWebServer::HandleCfgModem(PageEntry_t& p, PageContext_t& c)
   c.input_checkbox("Enable SMS", "enable_sms", enable_sms);
   c.input_checkbox("Enable GPS", "enable_gps", enable_gps);
   c.input_checkbox("Use GPS time", "enable_gpstime", enable_gpstime);
-  c.input("number", "GPS park pause", "gps_parkpause", gps_parkpause.c_str(), "Default: 0 = disabled",
-    "<p>Auto pause GPS when parking for longer than this time / 0 = no auto pausing</p>"
-    "<p>Pausing the GPS subsystem can help to avoid draining the 12V battery, see"
-    " <a target=\"_blank\" href=\"https://docs.openvehicles.com/en/latest/userguide/warnings.html#average-power-usage\">user manual</a>"
-    " for details.</p>",
-    "min=\"0\" step=\"5\"", "Seconds");
   c.fieldset_end();
 
   c.fieldset_start("Cellular client options");
@@ -1014,6 +1019,25 @@ void OvmsWebServer::HandleCfgModem(PageEntry_t& p, PageContext_t& c)
     "<p>Threshold for usable cellular signal strength</p>");
   c.input_slider("Bad signal level", "cfg_sq_bad", 3, "dBm", -1, cfg_sq_bad, -95.0, -128.0, 0.0, 0.1,
     "<p>Threshold for unusable cellular signal strength</p>");
+  c.fieldset_end();
+
+  c.fieldset_start("GPS parking and tracking");
+  c.input("number", "GPS park pause", "gps_parkpause", gps_parkpause.c_str(), "Default: 0 = disabled",
+    "<p>Auto pause GPS when parking for longer than this time / 0 = no auto pausing</p>"
+    "<p>Pausing the GPS subsystem can help to avoid draining the 12V battery, see"
+    " <a target=\"_blank\" href=\"https://docs.openvehicles.com/en/latest/userguide/warnings.html#average-power-usage\">user manual</a>"
+    " for details.</p>",
+    "min=\"0\" step=\"5\"", "Seconds");
+  c.input("number", "GPS park re-activate", "gps_parkreactivate", gps_parkreactivate.c_str(), "Default: 0 = disabled",
+    "<p>Auto re-activate GPS after parking for longer than this time / 0 = no auto re-activation</p>",
+    "min=\"0\" step=\"5\"", "Minutes");
+  c.input("number", "GPS lock time", "gps_parkreactlock", gps_parkreactlock.c_str(), "Default: 5",
+    "<p>by default, GPS lock for 5 minutes until automatic shutdown during parking time</p>",
+    "min=\"5\" step=\"1\"", "Minutes");
+  c.input("number", "Location streaming", "vehicle_stream", vehicle_stream.c_str(), "Default: 0",
+    "<p>While driving send location updates to server every n seconds, 0 = use default update interval</p>"
+    "<p>from server configuration. Same as App feature #8.</p>",
+    "min=\"0\" step=\"1\"", "Seconds");
   c.fieldset_end();
 
   c.hr();
@@ -1573,7 +1597,7 @@ void OvmsWebServer::HandleCfgServerV3(PageEntry_t& p, PageContext_t& c)
   std::string error;
   std::string server, user, password, port, topic_prefix;
   std::string updatetime_connected, updatetime_idle, updatetime_on, updatetime_charging, updatetime_awake, updatetime_sendall, updatetime_keepalive;
-  bool tls, legacy_event_topic;
+  bool tls, legacy_event_topic, updatetime_priority;
 
   if (c.method == "POST") {
     // process form submission:
@@ -1591,6 +1615,7 @@ void OvmsWebServer::HandleCfgServerV3(PageEntry_t& p, PageContext_t& c)
     updatetime_awake = c.getvar("updatetime_awake");
     updatetime_sendall = c.getvar("updatetime_sendall");
     updatetime_keepalive = c.getvar("updatetime_keepalive");
+    updatetime_priority = (c.getvar("updatetime_priority") == "yes");
 
     // validate:
     if (port != "") {
@@ -1635,6 +1660,7 @@ void OvmsWebServer::HandleCfgServerV3(PageEntry_t& p, PageContext_t& c)
       }
     }
 
+
     if (error == "") {
       // success:
       MyConfig.SetParamValue("server.v3", "server", server);
@@ -1667,6 +1693,7 @@ void OvmsWebServer::HandleCfgServerV3(PageEntry_t& p, PageContext_t& c)
         MyConfig.DeleteInstance("server.v3", "updatetime.keepalive");
       else
         MyConfig.SetParamValue("server.v3", "updatetime.keepalive", updatetime_keepalive);
+      MyConfig.SetParamValueBool("server.v3", "updatetime.priority", updatetime_priority);
 
       c.head(200);
       c.alert("success", "<p class=\"lead\">Server V3 (MQTT) connection configured.</p>");
@@ -1696,6 +1723,7 @@ void OvmsWebServer::HandleCfgServerV3(PageEntry_t& p, PageContext_t& c)
     updatetime_awake = MyConfig.GetParamValue("server.v3", "updatetime.awake");
     updatetime_sendall = MyConfig.GetParamValue("server.v3", "updatetime.sendall");
     updatetime_keepalive = MyConfig.GetParamValue("server.v3", "updatetime.keepalive");
+    updatetime_priority = MyConfig.GetParamValueBool("server.v3", "updatetime.priority", false);
 
     // generate form:
     c.head(200);
@@ -1724,31 +1752,25 @@ void OvmsWebServer::HandleCfgServerV3(PageEntry_t& p, PageContext_t& c)
     "optional, default: ovms/<username>/<vehicle id>/");
 
   c.fieldset_start("Update intervals");
-  c.input_text("…connected", "updatetime_connected", updatetime_connected.c_str(),
-    "optional, in seconds, default: 60");
-  c.input_text("…idle", "updatetime_idle", updatetime_idle.c_str(),
-    "optional, in seconds, default: 600");
-  c.input_text("…on", "updatetime_on", updatetime_on.c_str(),
-    "optional, in seconds, only used if set");
-  c.input_text("…charging", "updatetime_charging", updatetime_charging.c_str(),
-    "optional, in seconds, only used if set");
-  c.input_text("…awake", "updatetime_awake", updatetime_awake.c_str(),
-    "optional, in seconds, only used if set");
-  c.input_text("…sendall", "updatetime_sendall", updatetime_sendall.c_str(),
-    "optional, in seconds, only used if set");
-  c.input_text("…keepalive", "updatetime_keepalive", updatetime_keepalive.c_str(),
-    "optional, in seconds, default: 1740");
+  c.input_checkbox("prioritize GPS tracking metrics", "updatetime_priority", updatetime_priority,
+    "<p>GPS tracking metrics should be updated before other MQTT traffic. This can contribute to smoother tracking on V3 servers.</p>"
+    "<p><strong>Note:</strong> The update interval corresponds to the <strong>Vehicle stream</strong> setting!</p>");
+  c.input("number", "…connected", "updatetime_connected", updatetime_connected.c_str(), "default: 60", "default: 60, update interval when client is connected", "min=\"0\" max=\"600\" step=\"1\"", "seconds");
+  c.input("number", "…idle", "updatetime_idle", updatetime_idle.c_str(), "default: 600", "default: 600, update interval when client not connected", "min=\"0\" max=\"1200\" step=\"1\"", "seconds");
+  c.input("number", "…on", "updatetime_on", updatetime_on.c_str(), "default: 5", "default: 5", "min=\"0\" max=\"600\" step=\"1\"", "seconds");
+  //c.input("number", "…charging", "updatetime_charging", updatetime_charging.c_str(), "default: 20", "default: 20", "min=\"0\" max=\"600\" step=\"1\"", "seconds");
+  //c.input("number", "…awake", "updatetime_awake", updatetime_awake.c_str(), "default: 60", "default: 60", "min=\"0\" max=\"600\" step=\"1\"", "seconds");
+  //c.input("number", "…sendall", "updatetime_sendall", updatetime_sendall.c_str(), "default: 900", "default: 900", "min=\"0\" max=\"1800\" step=\"1\"", "seconds");
+  c.input("number", "…keepalive", "updatetime_keepalive", updatetime_keepalive.c_str(), "default: 1740",
+    "<p>default: 1740. Keepalive defines how often PINGREQs should be sent if there's inactivity. "
+    "It should be set slightly shorter than the network's NAT timeout "
+    "and the timeout of your MQTT server. If these are unknown you can use trial "
+    "and error. Symptoms of keepalive being too high are a lack of metric updates "
+    "after a certain point, or &quot;Disconnected from OVMS Server V3&quot; "
+    "appearing in the log.</p>",
+    "min=\"0\" max=\"3600\" step=\"1\"", "seconds");
+  
   c.fieldset_end();
-
-  c.print("<span class=\"help-block\">"
-	  "Keepalive defines how often PINGREQs should be sent if there's inactivity. "
-	  "It should be set slightly shorter than the network's NAT timeout "
-	  "and the timeout of your MQTT server. If these are unknown you can use trial "
-	  "and error. Symptoms of keepalive being too high are a lack of metric updates "
-	  "after a certain point, or &quot;Disconnected from OVMS Server V3&quot; "
-	  "appearing in the log."
-	  "</span>");
-
   c.hr();
   c.input_button("default", "Save");
   c.form_end();
@@ -1816,11 +1838,11 @@ void OvmsWebServer::HandleCfgNotifications(PageEntry_t& p, PageContext_t& c)
 
     if (error == "") {
       // success:
-      if (vehicle_minsoc == "")
+      if (vehicle_minsoc == "0")
         MyConfig.DeleteInstance("vehicle", "minsoc");
       else
         MyConfig.SetParamValue("vehicle", "minsoc", vehicle_minsoc);
-      if (vehicle_stream == "")
+      if (vehicle_stream == "0")
         MyConfig.DeleteInstance("vehicle", "stream");
       else
         MyConfig.SetParamValue("vehicle", "stream", vehicle_stream);
@@ -2111,9 +2133,9 @@ void OvmsWebServer::HandleCfgWebServer(PageEntry_t& p, PageContext_t& c)
 
 void OvmsWebServer::HandleCfgWifi(PageEntry_t& p, PageContext_t& c)
 {
-  bool cfg_bad_reconnect;
-  bool cfg_reboot_no_ip;
+  bool cfg_bad_reconnect, cfg_reboot_no_ip, cfg_ap2client_enabled, cfg_ap2client_notify;
   float cfg_sq_good, cfg_sq_bad;
+  int cfg_ap2client_timeout;
 
   if (c.method == "POST") {
     std::string warn, error;
@@ -2122,10 +2144,13 @@ void OvmsWebServer::HandleCfgWifi(PageEntry_t& p, PageContext_t& c)
     UpdateWifiTable(p, c, "ap", "wifi.ap", warn, error, 8);
     UpdateWifiTable(p, c, "client", "wifi.ssid", warn, error, 0);
 
-    cfg_sq_good = atof(c.getvar("cfg_sq_good").c_str());
-    cfg_sq_bad = atof(c.getvar("cfg_sq_bad").c_str());
-    cfg_bad_reconnect = (c.getvar("cfg_bad_reconnect") == "yes");
-    cfg_reboot_no_ip = (c.getvar("cfg_reboot_no_ip") == "yes");
+    cfg_sq_good           = atof(c.getvar("cfg_sq_good").c_str());
+    cfg_sq_bad            = atof(c.getvar("cfg_sq_bad").c_str());
+    cfg_bad_reconnect     = (c.getvar("cfg_bad_reconnect") == "yes");
+    cfg_reboot_no_ip      = (c.getvar("cfg_reboot_no_ip") == "yes");
+    cfg_ap2client_timeout = atof((c.getvar("cfg_ap2client_timeout")).c_str());
+    cfg_ap2client_enabled = (c.getvar("cfg_ap2client_enabled") == "yes");
+    cfg_ap2client_notify  = (c.getvar("cfg_ap2client_notify") == "yes");
 
     if (cfg_sq_bad >= cfg_sq_good) {
       error += "<li data-input=\"cfg_sq_bad\">'Bad' signal level must be lower than 'good' level.</li>";
@@ -2146,6 +2171,18 @@ void OvmsWebServer::HandleCfgWifi(PageEntry_t& p, PageContext_t& c)
         MyConfig.DeleteInstance("network", "reboot.no.ip");
       else
         MyConfig.SetParamValueBool("network", "reboot.no.ip", cfg_reboot_no_ip);
+      if (cfg_ap2client_timeout == 30)    // default is 30 minutes
+        MyConfig.DeleteInstance("network", "wifi.ap2client.timeout");
+      else
+        MyConfig.SetParamValueInt("network", "wifi.ap2client.timeout", cfg_ap2client_timeout);
+      if (!cfg_ap2client_enabled)         // default is disabled
+        MyConfig.DeleteInstance("network", "wifi.ap2client.enable");
+      else
+        MyConfig.SetParamValueBool("network", "wifi.ap2client.enable", cfg_ap2client_enabled);
+      if (!cfg_ap2client_notify)          // default is disabled
+        MyConfig.DeleteInstance("network", "wifi.ap2client.notify");
+      else
+        MyConfig.SetParamValueBool("network", "wifi.ap2client.notify", cfg_ap2client_notify);
     }
 
     if (error == "") {
@@ -2166,10 +2203,13 @@ void OvmsWebServer::HandleCfgWifi(PageEntry_t& p, PageContext_t& c)
     c.alert("danger", error.c_str());
   }
   else {
-    cfg_sq_good = MyConfig.GetParamValueFloat("network", "wifi.sq.good", -87);
-    cfg_sq_bad = MyConfig.GetParamValueFloat("network", "wifi.sq.bad", -89);
-    cfg_bad_reconnect = MyConfig.GetParamValueBool("network", "wifi.bad.reconnect", false);
-    cfg_reboot_no_ip = MyConfig.GetParamValueBool("network", "reboot.no.ip", false);
+    cfg_sq_good             = MyConfig.GetParamValueFloat("network", "wifi.sq.good", -87);
+    cfg_sq_bad              = MyConfig.GetParamValueFloat("network", "wifi.sq.bad", -89);
+    cfg_bad_reconnect       = MyConfig.GetParamValueBool("network", "wifi.bad.reconnect", false);
+    cfg_reboot_no_ip        = MyConfig.GetParamValueBool("network", "reboot.no.ip", false);
+    cfg_ap2client_timeout   = MyConfig.GetParamValueInt("network", "wifi.ap2client.timeout", 30);
+    cfg_ap2client_enabled   = MyConfig.GetParamValueBool("network", "wifi.ap2client.enable", false);
+    cfg_ap2client_notify    = MyConfig.GetParamValueBool("network", "wifi.ap2client.notify", false);
     c.head(200);
   }
 
@@ -2181,6 +2221,15 @@ void OvmsWebServer::HandleCfgWifi(PageEntry_t& p, PageContext_t& c)
 
   c.fieldset_start("Access point networks");
   OutputWifiTable(p, c, "ap", "wifi.ap", MyConfig.GetParamValue("auto", "wifi.ssid.ap", "OVMS"));
+  c.fieldset_end();
+
+  c.fieldset_start("Wifi APclient options");
+  c.input_checkbox("Enable Wifi APClient to client timeout", "cfg_ap2client_enabled", cfg_ap2client_enabled,
+    "<p>Enable = The OVMS will switch from Wifi APClient to Wifi Client mode after the timeout reached and a client is not connected.</p>"); 
+  c.input_checkbox("Enable Wifi APClient to client notify", "cfg_ap2client_notify", cfg_ap2client_notify,
+    "<p>Enable = Notify when Wifi APClient to Wifi Client mode switched.</p>");
+  c.input_slider("Wifi APClient to client timeout", "cfg_ap2client_timeout", 3, "min",-1, cfg_ap2client_timeout, 30, 1, 120, 1,
+    "<p>Set the time in minutes when the OVMS should switch from Wifi APClient to Wifi Client mode. Default 30 minutes.</p>"); 
   c.fieldset_end();
 
   c.fieldset_start("Wifi client networks");

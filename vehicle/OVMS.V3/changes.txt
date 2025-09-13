@@ -1,7 +1,36 @@
 Open Vehicle Monitor System v3 - Change log
 
 ????-??-?? ???  ???????  OTA release
-
+- server V3:
+    The number of metrics sent per update is limited to 20 and is split into multiple packets if necessary. Only updated data is sent.
+    Prioritize GPS tracking metrics, update interval set at Vehicle stream setting for smoother tracking
+    new config:
+      [server.v3] "updatetime.priority" (bool) -- enable/disable prioritizing GPS tracking
+- smart EQ: removed vehicle specific GPS on/off at parking -> moved to cellular
+- Vehicle notifications: grid log (history records `*-LOG-Grid`) V2 additions:
+    pos_odometer
+- Server V3: 
+  added configurable connect stabilization & random jitter (server.v3 conn.stable_wait / conn.jitter.max) before MQTT connect to reduce reconnect storms.
+- Cellular: 
+  safeguarded CGATT attach/detach (only with mux/PPP), added NetLoss retry limit & optional power‑cycle recovery to prevent loops.
+- esp32wifi:
+  The OVMS will switch from Wifi APClient to Wifi Client mode after the timeout reached and a client is not connected. "APClient" will be restored upon reboot/network restart.
+  new config, settings at Wifi:
+    [network] wifi.ap2client.timeout   -- Wifi Mode APClient to client timeout in minutes (default 30 minutes)
+    [network] wifi.ap2client.enable    -- Wifi Mode APClient to client enable/disable (default disable)
+    [network] wifi.ap2client.notify    -- Notify when Wifi APClient to Wifi Client mode switched (default disable)
+- Vehicle framework: signal generator operation state changes
+  New events:
+    vehicle.gen.start         -- Power delivery started
+    vehicle.gen.stop          -- Power delivery stopped
+    vehicle.gen.pilot.on      -- Pilot signal present
+    vehicle.gen.pilot.off     -- Pilot signal gone
+    vehicle.gen.timermode.on  -- Generator timer has been enabled
+    vehicle.gen.timermode.off -- Generator timer has been disabled
+- Cellular: GPS auto pause on parking re-activate option added (update position).
+  New config:
+    [modem] gps.reactivate    -- park time in minutes for auto re-activate for (default 5 minutes) GPS lock (gps.reactlock), 0 = disabled (default)
+    [modem] gps.reactlock     -- by default, GPS lock for 5 minutes until automatic shutdown during parking time
 
 2024-03-23 MB   3.3.005  OTA release
 - Cellular: GPS auto pause on parking option added (power saving).
@@ -40,6 +69,10 @@ Open Vehicle Monitor System v3 - Change log
   Add unit support
   Add extended signals/multiplexing support
   Add support for enum values.
+  Add OvmsDBC duktape object
+    OvmsDBC.Load
+    OvmsDBC.Unload
+    OvmsDBC.Get
 - OVMS Server v3: Ability to define less frequent MQTT communication to save data charges and power
   Events:
     Excludes clock.* events from being published at the start of every minute.
@@ -137,6 +170,14 @@ Open Vehicle Monitor System v3 - Change log
     OvmsPoller.Times.Stop
     OvmsPoller.Times.Reset
     OvmsPoller.Times.GetStatus
+    OvmsPoller.RegisterBus(bus, mode, speed, [,dbcfile])
+    OvmsPoller.PowerDown(bus)
+    OvmsPoller.Poll.Add(..)
+    OvmsPoller.Poll.Remove(..)
+    OvmsPoller.Poll.GetState([busno])
+    OvmsPoller.Poll.SetState([busno,] state)
+    OvmsPoller.Poll.Request(..)
+    OvmsPoller.Poll.SetTrace(enable)
 - Duktape support for Metric Age / Stale
   New Duktape methods
     OvmsMetrics.IsStale

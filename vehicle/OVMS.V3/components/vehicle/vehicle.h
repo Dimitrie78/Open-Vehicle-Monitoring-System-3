@@ -272,6 +272,9 @@ class OvmsVehicle : public InternalRamAllocated
       }
     OvmsPoller::VehicleSignal *GetPollerSignal();
 
+    int PollSingleRequest(canbus*  bus, uint32_t txid, uint32_t rxid,
+                      uint8_t polltype, uint16_t pid, const std::string &payload, std::string& response,
+                      int timeout_ms=3000, uint8_t protocol=ISOTP_STD);
     int PollSingleRequest(canbus* bus, uint32_t txid, uint32_t rxid,
                       std::string request, std::string& response,
                       int timeout_ms=3000, uint8_t protocol=ISOTP_STD);
@@ -428,6 +431,12 @@ class OvmsVehicle : public InternalRamAllocated
     virtual void NotifiedVehicleChargePilotOff() {}
     virtual void NotifiedVehicleChargeTimermodeOn() {}
     virtual void NotifiedVehicleChargeTimermodeOff() {}
+    virtual void NotifiedVehicleGenStart() {}
+    virtual void NotifiedVehicleGenStop() {}
+    virtual void NotifiedVehicleGenPilotOn() {}
+    virtual void NotifiedVehicleGenPilotOff() {}
+    virtual void NotifiedVehicleGenTimermodeOn() {}
+    virtual void NotifiedVehicleGenTimermodeOff() {}
     virtual void NotifiedVehicleAux12vOn() {}
     virtual void NotifiedVehicleAux12vOff() {}
     virtual void NotifiedVehicleCharge12vStart() {}

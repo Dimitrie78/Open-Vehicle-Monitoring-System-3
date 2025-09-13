@@ -124,8 +124,6 @@ OvmsVehicleSmartEQ::OvmsVehicleSmartEQ() {
   m_climate_start = false;
   m_climate_start_day = false;
   m_climate_ticker = 0;
-  m_gps_off = false;
-  m_gps_ticker = 0;
   m_12v_ticker = 0;
   m_12v_charge_state = false;
   m_v2_ticker = 0;
@@ -137,8 +135,11 @@ OvmsVehicleSmartEQ::OvmsVehicleSmartEQ() {
   m_modem_restart = false;
   m_modem_ticker = 0;
 
+  m_enable_write = false;
+
   m_charge_start = false;
   m_charge_finished = true;
+  m_notifySOClimit = false;
   m_led_state = 4;
   m_cfg_cell_interval_drv = 0;
   m_cfg_cell_interval_chg = 0;
@@ -221,7 +222,8 @@ OvmsVehicleSmartEQ::OvmsVehicleSmartEQ() {
   mt_obl_main_CHGpower          = new OvmsMetricVector<float>("xsq.obl.power", SM_STALE_HIGH, kW);
   mt_obl_main_freq              = MyMetrics.InitFloat("xsq.obl.freq", SM_STALE_MID, 0, Other);
   
-  RegisterCanBus(1, CAN_MODE_ACTIVE, CAN_SPEED_500KBPS);
+  // Start CAN bus in Listen-only mode - will be set according to m_enable_write in ConfigChanged()
+  RegisterCanBus(1, CAN_MODE_LISTEN, CAN_SPEED_500KBPS);
 
   // init commands:
   cmd_xsq = MyCommandApp.RegisterCommand("xsq","SmartEQ 453 Gen.4");
@@ -243,11 +245,6 @@ OvmsVehicleSmartEQ::OvmsVehicleSmartEQ() {
   StdMetrics.ms_v_bat_12v_voltage_alert->SetValue(false);  // set 12V alert to false
 
   m_network_type_ls = MyConfig.GetParamValue("xsq", "modem.net.type", "auto");
-  m_indicator       = MyConfig.GetParamValueBool("xsq", "indicator", false);              //!< activate indicator e.g. 7 times or whtever
-  
-  if (MyConfig.GetParamValue("password", "pin","0") == "0") {
-    MyConfig.SetParamValueInt("password", "pin", 1234);           // set default pin
-  }
 
   if (MyConfig.GetParamValue("xsq", "12v.charge","0") == "0") {
     MyConfig.SetParamValueBool("xsq", "12v.charge", true);
@@ -261,15 +258,11 @@ OvmsVehicleSmartEQ::OvmsVehicleSmartEQ() {
     MyConfig.SetParamValueBool("xsq", "v2.check", false);
   }
 
-  if (MyConfig.GetParamValue("xsq", "extended.stats","0") == "0") {
-    MyConfig.SetParamValueBool("xsq", "extended.stats", false);
-  }
-
   if (MyConfig.GetParamValue("xsq", "tpms.front.pressure","0") == "0") {
     MyConfig.SetParamValueInt("xsq", "tpms.front.pressure",  225); // kPa
     MyConfig.SetParamValueInt("xsq", "tpms.rear.pressure",  255); // kPa
-    MyConfig.SetParamValueInt("xsq", "tpms.value.warn",  30); // kPa
-    MyConfig.SetParamValueInt("xsq", "tpms.value.alert", 50); // kPa
+    MyConfig.SetParamValueInt("xsq", "tpms.value.warn",  50); // kPa
+    MyConfig.SetParamValueInt("xsq", "tpms.value.alert", 75); // kPa
   }
 
   if (MyConfig.GetParamValue("xsq", "tpms.alert.enable","0") == "0") {
@@ -308,9 +301,17 @@ OvmsVehicleSmartEQ::OvmsVehicleSmartEQ() {
   setTPMSValueBoot();                                          // set TPMS dummy values to 0
 
   #ifdef CONFIG_OVMS_COMP_CELLULAR
-    if(MyConfig.GetParamValue("xsq", "gps.onoff","0") == "0") {
-      MyConfig.SetParamValueBool("xsq", "gps.onoff", true);
-      MyConfig.SetParamValueInt("xsq", "gps.reactmin", 50);
+    
+    // Features option: auto disable GPS when parked -> moved to cellular module
+    if(MyConfig.GetParamValueBool("xsq", "gps.onoff", true) && MyConfig.GetParamValueBool("xsq", "gps.deact", true)) {
+      MyConfig.SetParamValueBool("xsq", "gps.deact", false); // delete old config entry and set new entry one time
+      MyConfig.SetParamValue("modem", "gps.parkpause", "600"); // default 10 min.
+      MyConfig.SetParamValue("modem", "gps.parkreactivate", "50"); // default 50 min.
+      MyConfig.SetParamValue("modem", "gps.parkreactlock", "5"); // default 5 min.
+      MyConfig.SetParamValue("vehicle", "stream", "10"); // set stream to 10 sec.
+      if(MyConfig.GetParamValue("xsq", "gps.onoff","0") != "0") MyConfig.DeleteInstance("xsq", "gps.onoff");  // delete old config entry
+      if(MyConfig.GetParamValue("xsq", "gps.off","0") != "0") MyConfig.DeleteInstance("xsq", "gps.off");  // delete old config entry
+      if(MyConfig.GetParamValue("xsq", "gps.reactmin","0") != "0") MyConfig.DeleteInstance("xsq", "gps.reactmin");  // delete old config entry
     }
     
     #ifdef CONFIG_OVMS_COMP_WIFI
@@ -318,11 +319,7 @@ OvmsVehicleSmartEQ::OvmsVehicleSmartEQ() {
       using std::placeholders::_1;
       using std::placeholders::_2;
       MyEvents.RegisterEvent(TAG,"system.wifi.sta.disconnected", std::bind(&OvmsVehicleSmartEQ::ModemEventRestart, this, _1, _2));
-      MyEvents.RegisterEvent(TAG,"system.wifi.ap.sta.disconnected", std::bind(&OvmsVehicleSmartEQ::ModemEventRestart, this, _1, _2));
-      //MyEvents.RegisterEvent(TAG,"network.wifi.sta.bad", std::bind(&OvmsVehicleSmartEQ::ModemEventRestart, this, _1, _2));
-      //MyEvents.RegisterEvent(TAG,"system.wifi.sta.stop", std::bind(&OvmsVehicleSmartEQ::ModemEventRestart, this, _1, _2));
-      //MyEvents.RegisterEvent(TAG,"system.wifi.down", std::bind(&OvmsVehicleSmartEQ::ModemEventRestart, this, _1, _2));
-    #endif // #ifdef CONFIG_OVMS_COMP_WIFI
+#endif
 
   #endif
   #ifdef CONFIG_OVMS_COMP_WEBSERVER
@@ -386,7 +383,14 @@ void OvmsVehicleSmartEQ::ConfigChanged(OvmsConfigParam* param) {
 
   ESP_LOGI(TAG, "Smart EQ reload configuration");
 
+  bool stateWrite = m_enable_write;
   m_enable_write      = MyConfig.GetParamValueBool("xsq", "canwrite", false);
+  // set CAN bus transceiver to active or listen-only depending on user selection
+  if ( stateWrite != m_enable_write )
+  {
+      CAN_mode_t mode = m_enable_write ? CAN_MODE_ACTIVE : CAN_MODE_LISTEN;
+      RegisterCanBus(1, mode, CAN_SPEED_500KBPS);
+  }
   m_enable_LED_state  = MyConfig.GetParamValueBool("xsq", "led", false);
   m_enable_lock_state = MyConfig.GetParamValueBool("xsq", "unlock.warning", false);
   m_ios_tpms_fix      = MyConfig.GetParamValueBool("xsq", "ios_tpms_fix", false);
@@ -394,12 +398,6 @@ void OvmsVehicleSmartEQ::ConfigChanged(OvmsConfigParam* param) {
   m_resettrip         = MyConfig.GetParamValueBool("xsq", "resettrip", false);
   m_resettotal        = MyConfig.GetParamValueBool("xsq", "resettotal", false);
   m_tripnotify        = MyConfig.GetParamValueBool("xsq", "reset.notify", false);
-/*
-  m_TPMS_FL           = MyConfig.GetParamValueInt("xsq", "TPMS_FL", 0);
-  m_TPMS_FR           = MyConfig.GetParamValueInt("xsq", "TPMS_FR", 1);
-  m_TPMS_RL           = MyConfig.GetParamValueInt("xsq", "TPMS_RL", 2);
-  m_TPMS_RR           = MyConfig.GetParamValueInt("xsq", "TPMS_RR", 3);
-*/
   m_tpms_index[3]     = MyConfig.GetParamValueInt("xsq", "TPMS_FL", 0);
   m_tpms_index[2]     = MyConfig.GetParamValueInt("xsq", "TPMS_FR", 1);
   m_tpms_index[1]     = MyConfig.GetParamValueInt("xsq", "TPMS_RL", 2);
@@ -413,9 +411,7 @@ void OvmsVehicleSmartEQ::ConfigChanged(OvmsConfigParam* param) {
   m_modem_check       = MyConfig.GetParamValueBool("xsq", "modem.check", false);
   m_12v_charge        = MyConfig.GetParamValueBool("xsq", "12v.charge", true);
   m_v2_check          = MyConfig.GetParamValueBool("xsq", "v2.check", false);
-  m_climate_system    = MyConfig.GetParamValueBool("xsq", "climate.system", true);
-  m_gps_onoff         = MyConfig.GetParamValueBool("xsq", "gps.onoff", true);
-  m_gps_reactmin      = MyConfig.GetParamValueInt("xsq", "gps.reactmin", 50);
+  m_climate_system    = MyConfig.GetParamValueBool("xsq", "climate.system", false);
   m_network_type      = MyConfig.GetParamValue("xsq", "modem.net.type", "auto");
   m_indicator         = MyConfig.GetParamValueBool("xsq", "indicator", false);              //!< activate indicator e.g. 7 times or whtever
   m_extendedStats     = MyConfig.GetParamValueBool("xsq", "extended.stats", false);         //!< activate extended stats e.g. trip and maintenance data
@@ -700,6 +696,7 @@ bool OvmsVehicleSmartEQ::ExecuteCommand(const std::string& command) {
 
 void OvmsVehicleSmartEQ::ResetChargingValues() {
   m_charge_finished = false;
+  m_notifySOClimit = false;
   StdMetrics.ms_v_charge_kwh->SetValue(0); // charged Energy
   //StdMetrics.ms_v_charge_kwh_grid->SetValue(0);
 }
@@ -802,7 +799,7 @@ void OvmsVehicleSmartEQ::TimeBasedClimateData() {
     sprintf(buf, "booster,%s,%s,%s,%d,%d,%d", _climate_on.c_str(), _climate_weekly.c_str(), mt_climate_time->AsString().c_str(), mt_climate_ds->AsInt(), mt_climate_de->AsInt(), mt_climate_1to3->AsInt());
     StdMetrics.ms_v_gen_mode->SetValue(std::string(buf));
     StdMetrics.ms_v_gen_current->SetValue(3);
-    NotifyClimateTimer();
+    if(MyConfig.GetParamValueBool("xsq", "climate.notify",false)) NotifyClimateTimer();
   }
 }
 
@@ -838,44 +835,6 @@ void OvmsVehicleSmartEQ::Check12vState() {
       ESP_LOGI(TAG, "12V alert cleared, resetting ticker");
       m_12v_ticker = 0;
   }
-}
-
-// switch the GPS on/off depending on the parktime and the bus state
-void OvmsVehicleSmartEQ::GPSOnOff() {
-  #ifdef CONFIG_OVMS_COMP_CELLULAR
-    static const int PARK_TIMEOUT_SECS = 600;  // 10 minutes
-    static const int INITIAL_DELAY = 10;
-    m_gps_ticker++;
-
-    // Power saving: Turn off GPS
-    bool should_turn_off = (StdMetrics.ms_v_env_parktime->AsInt() > PARK_TIMEOUT_SECS &&
-                          !StdMetrics.ms_v_env_on->AsBool() &&
-                          m_gps_onoff &&
-                          !m_gps_off &&
-                          (m_gps_ticker > INITIAL_DELAY));
-
-    // Reactivation conditions
-    bool should_turn_on = ((m_gps_ticker >= m_gps_reactmin) && m_gps_onoff && m_gps_off) ||
-                        (mt_bus_awake->AsBool() && m_gps_off);
-
-    if (should_turn_off) {
-        ESP_LOGI(TAG, "Turning GPS off - vehicle parked and inactive");
-        m_gps_off = true;
-        m_gps_ticker = 0;
-        if (MyPeripherals && MyPeripherals->m_cellular_modem) {
-            MyPeripherals->m_cellular_modem->StopNMEA();
-        }
-    } else if (should_turn_on) {
-        ESP_LOGI(TAG, "Turning GPS on - timer/bus wake condition");
-        m_gps_off = false;
-        m_gps_ticker = 0;
-        if (MyPeripherals && MyPeripherals->m_cellular_modem) {
-            MyPeripherals->m_cellular_modem->StartNMEA();
-        }
-    }
-  #else
-      ESP_LOGD(TAG, "GPS control disabled - cellular modem support not enabled");
-  #endif // CONFIG_OVMS_COMP_CELLULAR
 }
 
 // check the Server V2 connection and reboot the network if needed
@@ -1044,6 +1003,7 @@ void OvmsVehicleSmartEQ::Handlev2Server(){
  * Called once per 10 seconds from Ticker10
  */
 void OvmsVehicleSmartEQ::HandleCharging() {
+  float act_soc        = StdMetrics.ms_v_bat_soc->AsFloat(0);
   float limit_soc       = StdMetrics.ms_v_charge_limit_soc->AsFloat(0);
   float limit_range     = StdMetrics.ms_v_charge_limit_range->AsFloat(0, Kilometers);
   float max_range       = StdMetrics.ms_v_bat_range_full->AsFloat(0, Kilometers);
@@ -1065,25 +1025,34 @@ void OvmsVehicleSmartEQ::HandleCharging() {
     float energy = power / 3600.0f * 1.0f;                         // 1 second worth of energy in kwh's
     StdMetrics.ms_v_charge_kwh->SetValue( StdMetrics.ms_v_charge_kwh->AsFloat() + energy);
 
-    // Calculate remaining time to full charge
-    if(StdMetrics.ms_v_charge_power->AsFloat() > 12.0f){
-      StdMetrics.ms_v_charge_duration_full->SetValue(mt_obd_duration->AsInt(), Minutes);
-      ESP_LOGV(TAG, "Time remaining: %d mins to 100%% soc", mt_obd_duration->AsInt());
-    } else {
-      float soc100 = 100.0f;
-      int remaining_soc = calcMinutesRemaining(soc100, charge_voltage, charge_current);
-      StdMetrics.ms_v_charge_duration_full->SetValue(remaining_soc, Minutes);
-      ESP_LOGV(TAG, "Time remaining: %d mins to %0.0f%% soc", remaining_soc, soc100);
-    }
+    // If no limits are set, then calculate remaining time to full charge
+    if (limit_soc <= 0 && limit_range <= 0) {
+      // If the charge power is above 12kW, then use the OBD duration value
+      if(StdMetrics.ms_v_charge_power->AsFloat() > 12.0f){
+        StdMetrics.ms_v_charge_duration_full->SetValue(mt_obd_duration->AsInt(), Minutes);
+        ESP_LOGV(TAG, "Time remaining: %d mins to 100%% soc", mt_obd_duration->AsInt());
+      } else {
+        float soc100 = 100.0f;
+        int remaining_soc = calcMinutesRemaining(soc100, charge_voltage, charge_current);
+        StdMetrics.ms_v_charge_duration_full->SetValue(remaining_soc, Minutes);
+        ESP_LOGV(TAG, "Time remaining: %d mins to %0.0f%% soc", remaining_soc, soc100);
+      }
+    }    
+    // if limit_soc is set, then calculate remaining time to limit_soc
     if (limit_soc > 0) {
-      // if limit_soc is set, then calculate remaining time to limit_soc
       int minsremaining_soc = calcMinutesRemaining(limit_soc, charge_voltage, charge_current);
 
       StdMetrics.ms_v_charge_duration_soc->SetValue(minsremaining_soc, Minutes);
       ESP_LOGV(TAG, "Time remaining: %d mins to %0.0f%% soc", minsremaining_soc, limit_soc);
+      if (act_soc >= limit_soc && !m_notifySOClimit) {
+        m_notifySOClimit = true;
+        StdMetrics.ms_v_charge_duration_soc->SetValue(0, Minutes);
+        ESP_LOGV(TAG, "Time remaining: 0 mins to %0.0f%% soc (already above limit)", limit_soc);
+        NotifySOClimit();
+      }
     }
+    // If limit_range is set, then calculate remaining time to that range
     if (limit_range > 0 && max_range > 0.0f) {
-      // if range limit is set, then compute required soc and then calculate remaining time to that soc
       float range_soc           = limit_range / max_range * 100.0f;
       int   minsremaining_range = calcMinutesRemaining(range_soc, charge_voltage, charge_current);
 
@@ -1254,11 +1223,6 @@ void OvmsVehicleSmartEQ::vehicle_smart_car_on(bool isOn) {
     m_warning_unlocked = false;
 
     #ifdef CONFIG_OVMS_COMP_CELLULAR
-      if (m_gps_off) {
-        m_gps_off = false;
-        m_gps_ticker = 0;
-        MyPeripherals->m_cellular_modem->StartNMEA();
-      }
       m_12v_ticker = 0;
       m_climate_ticker = 0;
     #endif
@@ -1337,7 +1301,6 @@ void OvmsVehicleSmartEQ::Ticker1(uint32_t ticker) {
     #endif
 
     #ifdef CONFIG_OVMS_COMP_CELLULAR
-      if(m_gps_onoff && !StdMetrics.ms_v_env_on->AsBool()) GPSOnOff();
       if(m_network_type != m_network_type_ls) ModemNetworkType();
     #endif
 
@@ -2452,6 +2415,43 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::CommandStat(int verbosity, Ov
 }
 
 /**
+ * ProcessMsgCommand: V2 compatibility protocol message command processing
+ *  result: optional payload or message to return to the caller with the command response
+ */
+OvmsVehicleSmartEQ::vehicle_command_t OvmsVehicleSmartEQ::ProcessMsgCommand(string& result, int command, const char* args)
+{
+  switch (command)
+  {
+    case CMD_SetChargeAlerts:
+      return MsgCommandCA(result, command, args);
+
+    default:
+      return NotImplemented;
+  }
+}
+
+/**
+ * MsgCommandCA:
+ *  - CMD_SetChargeAlerts(<soc>)
+ */
+OvmsVehicleSmartEQ::vehicle_command_t OvmsVehicleSmartEQ::MsgCommandCA(std::string &result, int command, const char* args)
+{
+  if (command == CMD_SetChargeAlerts && args && *args)
+  {
+    std::istringstream sentence(args);
+    std::string token;
+    
+    // CMD_SetChargeAlerts(<soc limit>)
+    if (std::getline(sentence, token, ','))
+      MyConfig.SetParamValueInt("xsq", "suffsoc", atoi(token.c_str()));
+    
+    // Synchronize with config changes:
+    ConfigChanged(NULL);
+  }
+  return Success;
+}
+  
+/**
  * writer for command line interface
  */
 void OvmsVehicleSmartEQ::xsq_trip_start(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv) {
@@ -2610,6 +2610,19 @@ void OvmsVehicleSmartEQ::NotifyClimate() {
   StringWriter buf(200);
   CommandClimate(COMMAND_RESULT_NORMAL, &buf);
   MyNotify.NotifyString("info","xsq.climate",buf.c_str());
+}
+
+OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::CommandSOClimit(int verbosity, OvmsWriter* writer) {
+  writer->puts("SOC limit reached:");
+  writer->printf("  SOC: %s\n", (char*) StdMetrics.ms_v_bat_soc->AsUnitString("-", Native, 1).c_str());
+  writer->printf("  CAC: %s\n", (char*) StdMetrics.ms_v_bat_cac->AsUnitString("-", Native, 1).c_str());
+  writer->printf("  SOH: %s %s\n", StdMetrics.ms_v_bat_soh->AsUnitString("-", ToUser, 0).c_str(), StdMetrics.ms_v_bat_health->AsUnitString("-", ToUser, 0).c_str());
+  return Success;
+}
+void OvmsVehicleSmartEQ::NotifySOClimit() {
+  StringWriter buf(200);
+  CommandSOClimit(COMMAND_RESULT_NORMAL, &buf);
+  MyNotify.NotifyString("info","xsq.soclimit",buf.c_str());
 }
 
 OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::Command12Vcharge(int verbosity, OvmsWriter* writer) {
@@ -2933,7 +2946,7 @@ const std::string OvmsVehicleSmartEQ::GetFeature(int key)
     }
     case 16:
     {
-      int bits = ( MyConfig.GetParamValueBool("xsq", "unlock.warning",  false) ?  1 : 0);
+      int bits = ( MyConfig.GetParamValueBool("xsq", "unlock.warning",  true) ?  1 : 0);
       char buf[4];
       sprintf(buf, "%d", bits);
       return std::string(buf);
@@ -2952,4 +2965,3 @@ OvmsVehicleSmartEQInit::OvmsVehicleSmartEQInit() {
   ESP_LOGI(TAG, "Registering Vehicle: SMART EQ (9000)");
   MyVehicleFactory.RegisterVehicle<OvmsVehicleSmartEQ>("SQ", "smart 453 4.Gen");
 }
-

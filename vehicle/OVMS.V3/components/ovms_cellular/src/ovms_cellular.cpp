@@ -50,6 +50,10 @@ static const char *TAG = "cellular";
 
 modem* MyModem = NULL;
 
+// retry counter to avoid tight NetLoss loops
+static int s_netloss_retries = 0;
+static const int s_netloss_retry_limit = 3;
+
 ////////////////////////////////////////////////////////////////////////////////
 // General utility functions
 
@@ -317,6 +321,7 @@ modem::modem(const char* name, uart_port_t uartnum, int baud, int rxpin, int txp
   m_gps_usermode = GUM_DEFAULT;
   m_gps_parkpause = 0;
   m_gps_stopticker = 0;
+  m_gps_startticker = 0;
   m_mux = NULL;
   m_ppp = NULL;
   m_driver = NULL;
@@ -332,6 +337,8 @@ modem::modem(const char* name, uart_port_t uartnum, int baud, int rxpin, int txp
   MyEvents.RegisterEvent(TAG, "system.shuttingdown", std::bind(&modem::EventListener, this, _1, _2));
   MyEvents.RegisterEvent(TAG, "vehicle.on", std::bind(&modem::EventListener, this, _1, _2));
   MyEvents.RegisterEvent(TAG, "vehicle.off", std::bind(&modem::EventListener, this, _1, _2));
+  MyEvents.RegisterEvent(TAG, "system.modem.gpsstop", std::bind(&modem::EventListener, this, _1, _2));
+  MyEvents.RegisterEvent(TAG, "system.modem.gotgps", std::bind(&modem::EventListener, this, _1, _2));
   MyEvents.RegisterEvent(TAG, "config.mounted", std::bind(&modem::ConfigChanged, this, _1, _2));
   MyEvents.RegisterEvent(TAG, "config.changed", std::bind(&modem::ConfigChanged, this, _1, _2));
   ConfigChanged("config.mounted", NULL);
@@ -661,6 +668,18 @@ void modem::State1Enter(modem_state1_t newstate)
 
     case NetWait:
       MyEvents.SignalEvent("system.modem.netwait", NULL);
+      if (m_ppp != NULL && !m_ppp->m_connected)
+        {
+        // Guard against calling muxtx before MUX POLL channel is actually open (was causing crash):
+        if (m_mux && m_mux->IsChannelOpen(m_mux_channel_POLL))
+          {
+          muxtx(m_mux_channel_POLL, "AT+CGATT=1\r\n");
+          }
+        else
+          {
+          ESP_LOGD(TAG, "Deferring CGATT attach: POLL channel not yet open");
+          }
+        }
       if (GPS_SHALL_START())
         StartNMEA();
       break;
@@ -673,11 +692,34 @@ void modem::State1Enter(modem_state1_t newstate)
 
     case NetLoss:
       MyEvents.SignalEvent("system.modem.netloss", NULL);
+      s_netloss_retries++;      // increment NetLoss retry counter
       m_state1_timeout_ticks = 10;
       m_state1_timeout_goto = NetWait;
+
+      // If we've exceeded retry limit, escalate to a power cycle to break loops
+      if (s_netloss_retries >= s_netloss_retry_limit)
+        {
+        ESP_LOGW(TAG, "NetLoss: retry limit exceeded -> forcing power cycle");
+        m_state1_timeout_ticks = 3;
+        m_state1_timeout_goto = PowerOffOn;
+        break;
+        }
+
+      // Only attempt to detach/stop PPP if PPP is actually running/connected.
       if (m_mux != NULL)
-        { muxtx(m_mux_channel_POLL, "AT+CGATT=0\r\n"); }
-      StopPPP();
+        {
+        if (m_ppp != NULL && m_ppp->m_connected)
+          {
+          ESP_LOGI(TAG, "NetLoss: PPP connected - detaching PDP and stopping PPP");
+          muxtx(m_mux_channel_POLL, "AT+CGATT=0\r\n");
+          StopPPP();
+          s_netloss_retries = 0;    // reset NetLoss retry counter
+          }
+        else
+          {
+          ESP_LOGI(TAG, "NetLoss: PPP not connected - skipping detach/StopPPP");
+          }
+        }
       break;
 
     case NetHold:
@@ -734,6 +776,7 @@ void modem::State1Enter(modem_state1_t newstate)
       PowerCycle();
       m_state1_timeout_ticks = 3;
       m_state1_timeout_goto = PoweringOn;
+      s_netloss_retries = 0;    // reset NetLoss retry counter
       break;
 
     case Development:
@@ -1588,8 +1631,30 @@ void modem::Ticker(std::string event, void* data)
   if (m_gps_stopticker > 0 && --m_gps_stopticker == 0)
     {
     ESP_LOGI(TAG, "Scheduled GPS stop");
-    StopNMEA();
+    if (m_nmea) StopNMEA();
     }
+
+  // GPS reactivation:
+  if (m_gps_startticker > 0 && --m_gps_startticker == 0)
+    {
+    if (!m_nmea && m_gps_enabled && m_gps_usermode == GUM_DEFAULT)
+      {
+      ESP_LOGI(TAG, "Scheduled GPS start");
+      StartNMEA();
+      }
+    else
+      {
+      ESP_LOGI(TAG, "GPS reactivation requested, but not enabled or in user mode");
+      }
+    }
+
+    if (!m_nmea && m_gps_enabled && m_gps_usermode == GUM_DEFAULT &&
+        m_gps_parkpause > 0 && StdMetrics.ms_v_env_on->AsBool() == false &&
+        m_gps_reactivate > 0 &&
+        m_gps_startticker == 0 && m_gps_stopticker == 0)
+      {
+      m_gps_startticker = m_gps_reactivate * 60; // convert minutes to seconds
+      }
   }
 
 void modem::EventListener(std::string event, void* data)
@@ -1607,6 +1672,7 @@ void modem::EventListener(std::string event, void* data)
     if (!m_nmea && m_gps_enabled && m_gps_usermode == GUM_DEFAULT)
       {
       ESP_LOGI(TAG, "Vehicle switched on, starting GPS");
+      m_gps_startticker = 0;
       StartNMEA();
       }
     m_gps_stopticker = 0;
@@ -1615,8 +1681,26 @@ void modem::EventListener(std::string event, void* data)
     {
     if (m_nmea && m_gps_enabled && m_gps_usermode == GUM_DEFAULT && m_gps_parkpause > 0)
       {
-      ESP_LOGI(TAG, "Vehicle switched off, scheduling GPS stop in %d seconds", m_gps_parkpause);
       m_gps_stopticker = m_gps_parkpause;
+      ESP_LOGI(TAG, "Vehicle switched off, scheduling GPS stop in %d seconds", m_gps_parkpause);
+      }
+    }
+  else if (event == "system.modem.gpsstop")
+    {
+    if (m_gps_enabled && m_gps_usermode == GUM_DEFAULT && StdMetrics.ms_v_env_on->AsBool() == false)
+      {
+      m_gps_startticker = m_gps_reactivate * 60; // convert minutes to seconds
+      m_gps_stopticker = StdMetrics.ms_v_env_parktime->AsInt() + m_gps_reactivate * 60; // ensure we don't stop again before reactivation
+      ESP_LOGI(TAG, "GPS stopped by GPS pause system, restarting in %d minutes", m_gps_reactivate);
+      }    
+    }
+  else if (event == "system.modem.gotgps")
+    {
+    if (m_nmea && m_gps_enabled && m_gps_usermode == GUM_DEFAULT && m_gps_parkpause > 0 && StdMetrics.ms_v_env_on->AsBool() == false)
+      {
+      m_gps_startticker = 0;
+      m_gps_stopticker = m_gps_reactlock * 60; // default 5 minutes
+      ESP_LOGI(TAG, "GPS got fix, scheduling GPS stop in %d seconds", m_gps_stopticker);
       }
     }
   }
@@ -1629,29 +1713,37 @@ void modem::ConfigChanged(std::string event, void* data)
     {
     bool enable_gps = MyConfig.GetParamValueBool("modem", "enable.gps", false);
     int gps_parkpause = MyConfig.GetParamValueInt("modem", "gps.parkpause", 0);
+    int gps_reactivate = MyConfig.GetParamValueInt("modem", "gps.parkreactivate", 0);
+    int gps_reactlock = MyConfig.GetParamValueInt("modem", "gps.parkreactlock", 5);
     if (event == "config.mounted")
       {
       // Init:
       m_gps_enabled = enable_gps;
       m_gps_parkpause = gps_parkpause;
+      m_gps_reactivate = gps_reactivate;
+      m_gps_reactlock = gps_reactlock;
       }
-    else if (enable_gps != m_gps_enabled || gps_parkpause != m_gps_parkpause)
+    else if (enable_gps != m_gps_enabled || gps_parkpause != m_gps_parkpause || 
+            gps_reactivate != m_gps_reactivate || gps_reactlock != m_gps_reactlock)
       {
       // User changed GPS configuration; translate to status change:
       m_gps_usermode = GUM_DEFAULT;
       m_gps_enabled = enable_gps;
       m_gps_parkpause = gps_parkpause;
+      m_gps_reactivate = gps_reactivate;
+      m_gps_reactlock = gps_reactlock;
       if (!m_nmea && GPS_SHALL_START())
         StartNMEA();
       else if (m_nmea && GPS_SHALL_STOP())
         StopNMEA();
       // Adjust stop ticker:
-      if (m_nmea && m_gps_enabled && StdMetrics.ms_v_env_on->AsBool() == false &&
+      if (m_nmea && m_gps_enabled && StdMetrics.ms_v_env_on->AsBool() == false && 
           StdMetrics.ms_v_env_parktime->AsInt() < m_gps_parkpause)
         m_gps_stopticker = m_gps_parkpause - StdMetrics.ms_v_env_parktime->AsInt();
       else
-        m_gps_stopticker = 0;
-      }
+        m_gps_stopticker = m_gps_parkpause;
+        m_gps_startticker = m_gps_reactivate * 60;
+      }      
     }
 
   if (event == "config.mounted" || !param || param->GetName() == "network")
