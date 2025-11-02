@@ -317,6 +317,7 @@ modem::modem(const char* name, uart_port_t uartnum, int baud, int rxpin, int txp
   m_err_uart_frame = 0;
   m_err_driver_buffer_full = 0;
   m_nmea = NULL;
+  m_gps_hot_start = false;
   m_gps_enabled = false;
   m_gps_usermode = GUM_DEFAULT;
   m_gps_parkpause = 0;
@@ -337,8 +338,10 @@ modem::modem(const char* name, uart_port_t uartnum, int baud, int rxpin, int txp
   MyEvents.RegisterEvent(TAG, "system.shuttingdown", std::bind(&modem::EventListener, this, _1, _2));
   MyEvents.RegisterEvent(TAG, "vehicle.on", std::bind(&modem::EventListener, this, _1, _2));
   MyEvents.RegisterEvent(TAG, "vehicle.off", std::bind(&modem::EventListener, this, _1, _2));
+  MyEvents.RegisterEvent(TAG, "vehicle.awake", std::bind(&modem::EventListener, this, _1, _2));
   MyEvents.RegisterEvent(TAG, "system.modem.gpsstop", std::bind(&modem::EventListener, this, _1, _2));
   MyEvents.RegisterEvent(TAG, "system.modem.gotgps", std::bind(&modem::EventListener, this, _1, _2));
+  MyEvents.RegisterEvent(TAG, "system.modem.gpsstart", std::bind(&modem::EventListener, this, _1, _2));
   MyEvents.RegisterEvent(TAG, "config.mounted", std::bind(&modem::ConfigChanged, this, _1, _2));
   MyEvents.RegisterEvent(TAG, "config.changed", std::bind(&modem::ConfigChanged, this, _1, _2));
   ConfigChanged("config.mounted", NULL);
@@ -450,6 +453,7 @@ void modem::SupportSummary(OvmsWriter* writer, bool debug /*=FALSE*/)
     }
 
   writer->printf("  Model: %s\n",m_model.c_str());
+  writer->printf("  Revision: %s\n",StandardMetrics.ms_m_net_mdm_model->AsString().c_str());
 
   if (m_powermode != Off)
     {
@@ -922,11 +926,14 @@ modem::modem_state1_t modem::State1Ticker1()
         }
       switch (m_state1_ticker)
         {
+        case 8:
+          if (m_driver) m_driver->SetNetworkType(MyConfig.GetParamValue("modem", "net.type","auto"));
+          break;
         case 10:
           tx("AT+CPIN?;+CREG=1;+CTZU=1;+CTZR=1;+CLIP=1;+CMGF=1;+CNMI=1,2,0,0,0;+CSDH=1;+CMEE=2;+CSQ;+AUTOCSQ=1,1;E0;S0=0\r\n");
           break;
         case 12:
-          tx("AT+CGMR;+ICCID\r\n");
+          tx("AT+CGMR;+CICCID\r\n");
           break;
         case 20:
           tx("AT+CMUX=0\r\n");
@@ -1376,6 +1383,11 @@ void modem::StandardLineHandler(int channel, OvmsBuffer* buf, std::string line)
       m_line_buffer.clear();
       }
     }
+  else if (line.compare(0, 11, "+CGNSSPWR: ") == 0)
+    {
+    m_gps_hot_start = line.find("(1,1)") < std::string::npos || line.find("(0,1)") < std::string::npos;
+    ESP_LOGV(TAG, "GPS hot start : %s ", m_gps_hot_start ? "OK" : "not supported");
+    }
   }
 
 bool modem::IdentifyModel()
@@ -1687,9 +1699,9 @@ void modem::EventListener(std::string event, void* data)
     }
   else if (event == "system.modem.gpsstop")
     {
-    if (m_gps_enabled && m_gps_usermode == GUM_DEFAULT && StdMetrics.ms_v_env_on->AsBool() == false)
+    if (m_gps_enabled && m_gps_usermode == GUM_DEFAULT && m_gps_parkpause > 0 && StdMetrics.ms_v_env_on->AsBool() == false)
       {
-      m_gps_startticker = m_gps_reactivate * 60; // convert minutes to seconds
+      m_gps_startticker = m_gps_reactivate * 60;  // convert minutes to seconds
       m_gps_stopticker = StdMetrics.ms_v_env_parktime->AsInt() + m_gps_reactivate * 60; // ensure we don't stop again before reactivation
       ESP_LOGI(TAG, "GPS stopped by GPS pause system, restarting in %d minutes", m_gps_reactivate);
       }    
@@ -1699,8 +1711,27 @@ void modem::EventListener(std::string event, void* data)
     if (m_nmea && m_gps_enabled && m_gps_usermode == GUM_DEFAULT && m_gps_parkpause > 0 && StdMetrics.ms_v_env_on->AsBool() == false)
       {
       m_gps_startticker = 0;
-      m_gps_stopticker = m_gps_reactlock * 60; // default 5 minutes
-      ESP_LOGI(TAG, "GPS got fix, scheduling GPS stop in %d seconds", m_gps_stopticker);
+      m_gps_stopticker = m_gps_reactlock * 60;  // default 5 minutes
+      ESP_LOGI(TAG, "GPS got fix, scheduling GPS stop in %d minutes", m_gps_reactivate);
+      }
+    }
+  else if (event == "system.modem.gpsstart")
+    {
+    if (m_nmea && m_gps_enabled && m_gps_usermode == GUM_DEFAULT && m_gps_parkpause > 0 && StdMetrics.ms_v_env_on->AsBool() == false)
+      {
+      m_gps_startticker = 0;
+      m_gps_stopticker = m_gps_reactlock * 60;  // default 5 minutes
+      ESP_LOGI(TAG, "GPS is starting, scheduling GPS stop in %d minutes when GPS does not got a fix", m_gps_reactivate);
+      }
+    }
+  else if (event == "vehicle.awake")
+    {
+    if (!m_nmea && m_gps_enabled && m_gps_usermode == GUM_DEFAULT && m_gps_parkpause > 0 && m_gps_awake_start && StdMetrics.ms_v_env_on->AsBool() == false)
+      {
+      ESP_LOGI(TAG, "Vehicle awake, starting GPS");
+      m_gps_startticker = 0;
+      StartNMEA();
+      m_gps_stopticker = m_gps_reactlock * 60;  // default 5 minutes
       }
     }
   }
@@ -1712,9 +1743,14 @@ void modem::ConfigChanged(std::string event, void* data)
   if (!param || param->GetName() == "modem")
     {
     bool enable_gps = MyConfig.GetParamValueBool("modem", "enable.gps", false);
+    bool gps_reactawake = MyConfig.GetParamValueBool("modem", "gps.parkreactawake", false);
     int gps_parkpause = MyConfig.GetParamValueInt("modem", "gps.parkpause", 0);
     int gps_reactivate = MyConfig.GetParamValueInt("modem", "gps.parkreactivate", 0);
     int gps_reactlock = MyConfig.GetParamValueInt("modem", "gps.parkreactlock", 5);
+    if (m_driver)
+      {
+      m_driver->SetNetworkType(MyConfig.GetParamValue("modem", "net.type", "auto")); 
+      }
     if (event == "config.mounted")
       {
       // Init:
@@ -1722,13 +1758,18 @@ void modem::ConfigChanged(std::string event, void* data)
       m_gps_parkpause = gps_parkpause;
       m_gps_reactivate = gps_reactivate;
       m_gps_reactlock = gps_reactlock;
+      m_gps_awake_start = gps_reactawake;
       }
-    else if (enable_gps != m_gps_enabled || gps_parkpause != m_gps_parkpause || 
-            gps_reactivate != m_gps_reactivate || gps_reactlock != m_gps_reactlock)
+    else if (enable_gps != m_gps_enabled ||
+            gps_parkpause != m_gps_parkpause || 
+            gps_reactivate != m_gps_reactivate ||
+            gps_reactlock != m_gps_reactlock ||
+            gps_reactawake != m_gps_awake_start)
       {
       // User changed GPS configuration; translate to status change:
       m_gps_usermode = GUM_DEFAULT;
       m_gps_enabled = enable_gps;
+      m_gps_awake_start = gps_reactawake;
       m_gps_parkpause = gps_parkpause;
       m_gps_reactivate = gps_reactivate;
       m_gps_reactlock = gps_reactlock;

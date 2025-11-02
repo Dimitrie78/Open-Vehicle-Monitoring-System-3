@@ -27,28 +27,18 @@
  ; THE SOFTWARE.
  ;
  ; Most of the CAN Messages are based on https://github.com/MyLab-odyssey/ED_BMSdiag
+ ; https://github.com/MyLab-odyssey/ED4scan
  */
 
-#include <sdkconfig.h>
-#ifdef CONFIG_OVMS_COMP_WEBSERVER
-
-#include <stdio.h>
-#include <string>
-#include "ovms_metrics.h"
-#include "ovms_events.h"
-#include "ovms_config.h"
-#include "ovms_command.h"
-#include "metrics_standard.h"
-#include "ovms_notify.h"
-#include "ovms_webserver.h"
-
+ 
 #include "vehicle_smarteq.h"
+
+#ifdef CONFIG_OVMS_COMP_WEBSERVER
 
 using namespace std;
 
 #define _attr(text) (c.encode_html(text).c_str())
 #define _html(text) (c.encode_html(text).c_str())
-
 
 /**
  * WebInit: register pages
@@ -59,6 +49,7 @@ void OvmsVehicleSmartEQ::WebInit()
   MyWebServer.RegisterPage("/xsq/features", "Features", WebCfgFeatures, PageMenu_Vehicle, PageAuth_Cookie);
   MyWebServer.RegisterPage("/xsq/climate", "Climate/Heater", WebCfgClimate, PageMenu_Vehicle, PageAuth_Cookie);
   MyWebServer.RegisterPage("/xsq/tpms", "TPMS Config", WebCfgTPMS, PageMenu_Vehicle, PageAuth_Cookie);
+  MyWebServer.RegisterPage("/xsq/adc", "ADC Calc", WebCfgADC, PageMenu_Vehicle, PageAuth_Cookie);
   MyWebServer.RegisterPage("/xsq/battery", "Battery config", WebCfgBattery, PageMenu_Vehicle, PageAuth_Cookie);
   MyWebServer.RegisterPage("/xsq/cellmon", "BMS cell monitor", OvmsWebServer::HandleBmsCellMonitor, PageMenu_Vehicle, PageAuth_Cookie);
 }
@@ -71,6 +62,7 @@ void OvmsVehicleSmartEQ::WebDeInit()
   MyWebServer.DeregisterPage("/xsq/features");
   MyWebServer.DeregisterPage("/xsq/climate");
   MyWebServer.DeregisterPage("/xsq/tpms");
+  MyWebServer.DeregisterPage("/xsq/adc");
   MyWebServer.DeregisterPage("/xsq/battery");
   MyWebServer.DeregisterPage("/xsq/cellmon");
 }
@@ -80,14 +72,22 @@ void OvmsVehicleSmartEQ::WebDeInit()
  */
 void OvmsVehicleSmartEQ::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
 {
-  std::string error, info, full_km, rebootnw, net_type;
-  bool canwrite, led, ios, resettrip, resettotal, bcvalue, climate_system, charge12v, v2server, extstats, unlocked, mdmcheck, wakeup, tripnotify;
+  OvmsVehicleSmartEQ* sq = (OvmsVehicleSmartEQ*)MyVehicleFactory.ActiveVehicle();
+  if (!sq) {
+    c.head(400);
+    c.alert("danger", "Error: smartEQ vehicle not available");
+    c.done();
+    return;
+  }
+
+  std::string error, info, full_km, rebootnw;
+  bool canwrite, led, resettrip, resettotal, bcvalue, climate_system;
+  bool charge12v, extstats, unlocked, mdmcheck, tripnotify, opendoors;
 
   if (c.method == "POST") {
     // process form submission:
     canwrite    = (c.getvar("canwrite") == "yes");
     led         = (c.getvar("led") == "yes");
-    ios         = (c.getvar("ios") == "yes");
     rebootnw    = (c.getvar("rebootnw"));
     resettrip   = (c.getvar("resettrip") == "yes");
     resettotal  = (c.getvar("resettotal") == "yes");
@@ -95,33 +95,53 @@ void OvmsVehicleSmartEQ::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
     full_km  =  (c.getvar("full_km"));
     climate_system = (c.getvar("climate") == "yes");
     charge12v = (c.getvar("charge12v") == "yes");
-    v2server = (c.getvar("v2server") == "yes");
-    net_type = c.getvar("net_type");
     mdmcheck = (c.getvar("mdmcheck") == "yes");
     unlocked = (c.getvar("unlocked") == "yes");
     extstats = (c.getvar("extstats") == "yes");
-    wakeup   = (c.getvar("wakeup") == "yes");
     tripnotify = (c.getvar("resetnotify") == "yes");
-    
+    opendoors = (c.getvar("opendoors") == "yes");
+
+    // Basic numeric validation:
+    auto validFloat = [&](const std::string& s, double minv, double maxv, const char* fname)->bool {
+      if (s.empty()) return false;
+      char* end=nullptr;
+      double v = strtod(s.c_str(), &end);
+      if (end==s.c_str() || *end!='\0' || v<minv || v>maxv) {
+        error += std::string("<li>Invalid ")+fname+"</li>";
+        return false;
+      }
+      return true;
+    };
+    if(!validFloat(full_km, 50, 300, "WLTP km")) full_km = "126.0";
+    if(!validFloat(rebootnw, 0, 1440, "Restart Network Time")) rebootnw = "0";
+
     if (error.empty()) {
-      // success:
-      MyConfig.SetParamValueBool("xsq", "canwrite", canwrite);
-      MyConfig.SetParamValueBool("xsq", "led", led);
-      MyConfig.SetParamValueBool("xsq", "ios_tpms_fix", ios);
-      MyConfig.SetParamValue("xsq", "rebootnw", rebootnw);
-      MyConfig.SetParamValueBool("xsq", "resettrip", resettrip);
-      MyConfig.SetParamValueBool("xsq", "resettotal", resettotal);
-      MyConfig.SetParamValueBool("xsq", "bcvalue", bcvalue);
-      MyConfig.SetParamValue("xsq", "full.km", full_km);
-      MyConfig.SetParamValueBool("xsq", "climate.system", climate_system);
-      MyConfig.SetParamValueBool("xsq", "12v.charge", charge12v);
-      MyConfig.SetParamValueBool("xsq", "v2.check", v2server);
-      MyConfig.SetParamValue("xsq", "modem.net.type", net_type);
-      MyConfig.SetParamValueBool("xsq", "unlock.warning", unlocked);
-      MyConfig.SetParamValueBool("xsq", "modem.check", mdmcheck);
-      MyConfig.SetParamValueBool("xsq", "extended.stats", extstats);
-      MyConfig.SetParamValueBool("xsq", "restart.wakeup", wakeup);
-      MyConfig.SetParamValueBool("xsq", "reset.notify", tripnotify);
+      // Use GetParamMap() to get a COPY of the map
+      auto map = MyConfig.GetParamMap("xsq");
+      
+      // Helper lambda to set bool values
+      auto setBool = [&map](const char* key, bool val) {
+        map[key] = val ? "yes" : "no";
+      };
+      
+      // Update all values in local map
+      setBool("canwrite", canwrite);
+      setBool("led", led);
+      map["rebootnw"] = rebootnw;
+      setBool("resettrip", resettrip);
+      setBool("resettotal", resettotal);
+      setBool("bcvalue", bcvalue);
+      map["full.km"] = full_km;
+      setBool("climate.system", climate_system);
+      setBool("12v.charge", charge12v);
+      setBool("unlock.warning", unlocked);
+      setBool("modem.check", mdmcheck);
+      setBool("extended.stats", extstats);
+      setBool("reset.notify", tripnotify);
+      setBool("door.warning", opendoors);
+      
+      // Write all changes in one operation
+      MyConfig.SetParamMap("xsq", map);
 
       info = "<p class=\"lead\">Success!</p><ul class=\"infolist\">" + info + "</ul>";
       c.head(200);
@@ -136,24 +156,67 @@ void OvmsVehicleSmartEQ::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
     c.head(400);
     c.alert("danger", error.c_str());
   } else {
-    // read configuration:
-    canwrite    = MyConfig.GetParamValueBool("xsq", "canwrite", false);
-    led         = MyConfig.GetParamValueBool("xsq", "led", false);
-    ios         = MyConfig.GetParamValueBool("xsq", "ios_tpms_fix", false);
-    rebootnw    = MyConfig.GetParamValue("xsq", "rebootnw", "0");
-    resettrip   = MyConfig.GetParamValueBool("xsq", "resettrip", false);
-    resettotal  = MyConfig.GetParamValueBool("xsq", "resettotal", false);
-    bcvalue     = MyConfig.GetParamValueBool("xsq", "bcvalue", false);
-    full_km     = MyConfig.GetParamValue("xsq", "full.km", "126");
-    climate_system     = MyConfig.GetParamValueBool("xsq", "climate.system", false);
-    charge12v   = MyConfig.GetParamValueBool("xsq", "12v.charge", false);
-    v2server    = MyConfig.GetParamValueBool("xsq", "v2.check", false);
-    net_type    = MyConfig.GetParamValue("xsq", "modem.net.type", "auto");
-    unlocked    = MyConfig.GetParamValueBool("xsq", "unlock.warning", false);
-    mdmcheck    = MyConfig.GetParamValueBool("xsq", "modem.check", false);
-    extstats    = MyConfig.GetParamValueBool("xsq", "extended.stats", false);
-    wakeup      = MyConfig.GetParamValueBool("xsq", "restart.wakeup", false);
-    tripnotify  = MyConfig.GetParamValueBool("xsq", "reset.notify", false);
+    // read configuration using GetParamMap
+    OvmsConfigParam* param = MyConfig.CachedParam("xsq");
+    
+    if (param) {
+      const auto& m = param->GetMap();
+      
+      // Use sq-> instead of m_*
+      canwrite    = (m.count("canwrite") ? (m.at("canwrite") == "yes") : sq->m_enable_write);
+      led         = (m.count("led") ? (m.at("led") == "yes") : sq->m_enable_LED_state);
+      resettrip   = (m.count("resettrip") ? (m.at("resettrip") == "yes") : sq->m_resettrip);
+      resettotal  = (m.count("resettotal") ? (m.at("resettotal") == "yes") : sq->m_resettotal);
+      bcvalue     = (m.count("bcvalue") ? (m.at("bcvalue") == "yes") : sq->m_bcvalue);
+      climate_system = (m.count("climate.system") ? (m.at("climate.system") == "yes") : sq->m_climate_system);
+      charge12v   = (m.count("12v.charge") ? (m.at("12v.charge") == "yes") : sq->m_12v_charge);
+      unlocked    = (m.count("unlock.warning") ? (m.at("unlock.warning") == "yes") : sq->m_enable_lock_state);
+      mdmcheck    = (m.count("modem.check") ? (m.at("modem.check") == "yes") : sq->m_modem_check);
+      extstats    = (m.count("extended.stats") ? (m.at("extended.stats") == "yes") : sq->m_extendedStats);
+      tripnotify  = (m.count("reset.notify") ? (m.at("reset.notify") == "yes") : sq->m_tripnotify);
+      opendoors   = (m.count("door.warning") ? (m.at("door.warning") == "yes") : sq->m_enable_door_state);
+      
+      // Strings - need to convert to string
+      if (m.count("rebootnw")) {
+        rebootnw = m.at("rebootnw");
+      } else {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d", sq->m_reboot_time);
+        rebootnw = buf;
+      }
+      
+      if (m.count("full.km")) {
+        full_km = m.at("full.km");
+      } else {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d", sq->m_full_km);
+        full_km = buf;
+      }
+    } else {
+      // Fallback defaults - use snprintf
+      char buf[16];
+      
+      canwrite = sq->m_enable_write;
+      led = sq->m_enable_LED_state;
+      
+      snprintf(buf, sizeof(buf), "%d", sq->m_reboot_time);
+      rebootnw = buf;
+      
+      resettrip = sq->m_resettrip;
+      resettotal = sq->m_resettotal;
+      bcvalue = sq->m_bcvalue;
+      
+      snprintf(buf, sizeof(buf), "%d", sq->m_full_km);
+      full_km = buf;
+      
+      climate_system = sq->m_climate_system;
+      charge12v = sq->m_12v_charge;
+      unlocked = sq->m_enable_lock_state;
+      mdmcheck = sq->m_modem_check;
+      extstats = sq->m_extendedStats;
+      tripnotify = sq->m_tripnotify;
+      opendoors = sq->m_enable_door_state;
+    }
 
     c.head(200);
   }
@@ -184,29 +247,20 @@ void OvmsVehicleSmartEQ::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
   c.fieldset_start("Diff Settings");
   c.input_checkbox("Enable/Disable Online state LED when installed", "led", led,
     "<p>RED=Internet no, BLUE=Internet yes, GREEN=Server v2 connected.<br>EGPIO Port 7,8,9 are used</p>");
-  c.input_checkbox("Enable iOS TPMS fix", "ios", ios,
-    "<p>Set External Temperatures to TPMS Temperatures to Display Tire Pressures in iOS App Open Vehicle</p>");
   c.input_checkbox("Enable Climate System", "climate_system", climate_system,
     "<p>Enable = Climate/Heater system and data transfer to Android App activated</p>");
   c.input_checkbox("Enable 12V charging", "charge12v", charge12v,
     "<p>Enable = charge the 12V if low 12V alert is raised</p>");
-  c.input_checkbox("Enable V2 Server", "v2server", v2server,
-    "<p>Enable = keep v2 Server connected</p>");
   c.input_checkbox("Enable auto restart modem on Wifi disconnect", "mdmcheck", mdmcheck,
     "<p>Enable = The modem will restart as soon as the Wifi connection is no longer established.</p>");  
   c.input_checkbox("Enable Door unlocked warning", "unlocked", unlocked,
     "<p>Enable = send a warning when Car 10 minutes parked and unlocked</p>");
-  c.input_checkbox("Enable Wakeup on Restart", "wakeup", wakeup,
-    "<p>Enable = Wakeup the Car on Restart of the OVMS</p>");
+  c.input_checkbox("Enable Door open warning", "opendoors", opendoors,
+    "<p>Enable = send a warning when Car 10 minutes parked and doors are open</p>");
   c.input_checkbox("Enable extended statistics", "extstats", extstats,
-      "<p>Enable = Show extended statistics incl. maintenance and trip data. Not recomment for iOS Open Vehicle App!</p>");
+      "<p>Enable = Show extended statistics incl. maintenance and trip data. Not recomment for iOS Open Vehicle App!</p>");  
   c.input_slider("Restart Network Time", "rebootnw", 3, "min",-1, atof(rebootnw.c_str()), 15, 0, 60, 1,
     "<p>Default 0 = off. Restart Network automatic when no v2Server connection.</p>");
-  c.input_select_start("Modem Network type", "net_type");
-  c.input_select_option("Auto", "auto", net_type == "auto");
-  c.input_select_option("GSM/LTE", "gsm", net_type == "gsm");
-  c.input_select_option("LTE", "lte", net_type == "lte");
-  c.input_select_end();
   c.fieldset_end();
 
   c.print("<hr>");
@@ -248,6 +302,11 @@ void OvmsVehicleSmartEQ::WebCfgClimate(PageEntry_t& p, PageContext_t& c) {
     // Input validation
     if (climate_time.empty()) {
       error += "<li>Time must be specified</li>";
+    }
+    if (climate_time.size()>0) {
+      int t = atoi(climate_time.c_str());
+      if (t<0 || t>2359 || (t%100)>59)
+        error += "<li>Invalid time (HHMM)</li>";
     }
 
     // Convert values
@@ -295,16 +354,18 @@ void OvmsVehicleSmartEQ::WebCfgClimate(PageEntry_t& p, PageContext_t& c) {
     c.head(400);
     c.alert("danger", error.c_str());
   } else {
-  // read configuration using vehicle instance:
-  climate_time = sq->mt_climate_time->AsString();
-  climate_ds = sq->mt_climate_ds->AsString();
-  climate_de = sq->mt_climate_de->AsString();
-  climate_1to3 = sq->mt_climate_1to3->AsString();
-  climate_on = sq->mt_climate_on->AsBool();
-  climate_weekly = sq->mt_climate_weekly->AsBool();
-  climate_notify = MyConfig.GetParamValueBool("xsq", "climate.notify", false);
-  climate_system = MyConfig.GetParamValueBool("xsq", "climate.system", false);
-      
+    // read configuration using vehicle instance:
+    climate_time = sq->mt_climate_time->AsString();
+    climate_ds = sq->mt_climate_ds->AsString();
+    climate_de = sq->mt_climate_de->AsString();
+    climate_1to3 = sq->mt_climate_1to3->AsString();
+    climate_on = sq->mt_climate_on->AsBool();
+    climate_weekly = sq->mt_climate_weekly->AsBool();
+
+    // Use sq-> for member variables
+    climate_notify = MyConfig.GetParamValueBool("xsq", "climate.notify", sq->m_climate_notify);
+    climate_system = MyConfig.GetParamValueBool("xsq", "climate.system", sq->m_climate_system); 
+
   c.head(200);
   c.panel_start("primary", "Climate Control Settings");
   c.form_start(p.uri);
@@ -365,32 +426,39 @@ void OvmsVehicleSmartEQ::WebCfgTPMS(PageEntry_t& p, PageContext_t& c) {
   }
 
   std::string error, info, TPMS_FL, TPMS_FR, TPMS_RL, TPMS_RR, front_pressure, rear_pressure, pressure_warning, pressure_alert;
-  bool iosfix, enable;
+  bool tpms_temp, enable;
   
   if (c.method == "POST") {
     // Process form submission
-    iosfix      = (c.getvar("iosfix") == "yes");
-    enable      = (c.getvar("enable") == "yes");
-    TPMS_FL     = c.getvar("TPMS_FL");
-    TPMS_FR     = c.getvar("TPMS_FR");
-    TPMS_RL     = c.getvar("TPMS_RL");
-    TPMS_RR     = c.getvar("TPMS_RR");
+    tpms_temp      = (c.getvar("tpms.temp") == "yes");
+    enable         = (c.getvar("enable") == "yes");
+    TPMS_FL        = c.getvar("TPMS_FL");
+    TPMS_FR        = c.getvar("TPMS_FR");
+    TPMS_RL        = c.getvar("TPMS_RL");
+    TPMS_RR        = c.getvar("TPMS_RR");
     front_pressure = c.getvar("front_pressure");
     rear_pressure  = c.getvar("rear_pressure");
     pressure_warning = c.getvar("pressure_warning");
     pressure_alert   = c.getvar("pressure_alert");
 
     if (error.empty()) {
-      MyConfig.SetParamValueBool("xsq", "ios_tpms_fix", iosfix);
-      MyConfig.SetParamValueBool("xsq", "tpms.alert.enable", enable);
-      MyConfig.SetParamValue("xsq", "TPMS_FL", TPMS_FL);
-      MyConfig.SetParamValue("xsq", "TPMS_FR", TPMS_FR);
-      MyConfig.SetParamValue("xsq", "TPMS_RL", TPMS_RL);
-      MyConfig.SetParamValue("xsq", "TPMS_RR", TPMS_RR);
-      MyConfig.SetParamValue("xsq", "tpms.front.pressure", front_pressure);
-      MyConfig.SetParamValue("xsq", "tpms.rear.pressure", rear_pressure);
-      MyConfig.SetParamValue("xsq", "tpms.value.warn", pressure_warning);
-      MyConfig.SetParamValue("xsq", "tpms.value.alert", pressure_alert);
+      // Use GetParamMap() to get a COPY of the map
+      auto map = MyConfig.GetParamMap("xsq");
+      
+      // Update all values in local map
+      map["tpms.temp"] = tpms_temp ? "yes" : "no";
+      map["tpms.alert.enable"] = enable ? "yes" : "no";
+      map["TPMS_FL"] = TPMS_FL;
+      map["TPMS_FR"] = TPMS_FR;
+      map["TPMS_RL"] = TPMS_RL;
+      map["TPMS_RR"] = TPMS_RR;
+      map["tpms.front.pressure"] = front_pressure;
+      map["tpms.rear.pressure"] = rear_pressure;
+      map["tpms.value.warn"] = pressure_warning;
+      map["tpms.value.alert"] = pressure_alert;
+      
+      // Write all changes in one operation
+      MyConfig.SetParamMap("xsq", map);
         
       // Success response
       info = "<p>TPMS settings updated successfully</p>";
@@ -406,17 +474,73 @@ void OvmsVehicleSmartEQ::WebCfgTPMS(PageEntry_t& p, PageContext_t& c) {
     c.head(400);
     c.alert("danger", error.c_str());
   } else {
-    // read configuration:
-    iosfix      = MyConfig.GetParamValueBool("xsq", "ios_tpms_fix", false);
-    enable      = MyConfig.GetParamValueBool("xsq", "tpms.alert.enable", true);
-    TPMS_FL     = MyConfig.GetParamValue("xsq", "TPMS_FL", "0");
-    TPMS_FR     = MyConfig.GetParamValue("xsq", "TPMS_FR", "1");
-    TPMS_RL     = MyConfig.GetParamValue("xsq", "TPMS_RL", "2");
-    TPMS_RR     = MyConfig.GetParamValue("xsq", "TPMS_RR", "3");
-    front_pressure = MyConfig.GetParamValue("xsq", "tpms.front.pressure", "220"); // kPa
-    rear_pressure  = MyConfig.GetParamValue("xsq", "tpms.rear.pressure", "250"); // kPa
-    pressure_warning = MyConfig.GetParamValue("xsq", "tpms.value.warn", "25"); // kPa
-    pressure_alert   = MyConfig.GetParamValue("xsq", "tpms.value.alert", "45"); // kPa
+    // Read configuration using GetParamMap
+    OvmsConfigParam* param = MyConfig.CachedParam("xsq");
+    
+    if (param) {
+      const auto& m = param->GetMap();
+      
+      // Helper lambda for bool values
+      auto getBool = [&m](const char* key, bool def) -> bool {
+        auto it = m.find(key);
+        if (it == m.end()) return def;
+        const std::string& val = it->second;
+        return (val == "yes" || val == "true" || val == "1");
+      };
+      
+      // Helper lambda for string values (with float default conversion)
+      auto getString = [&m](const char* key, float def) -> std::string {
+        auto it = m.find(key);
+        if (it != m.end()) return it->second;
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%.0f", def);
+        return std::string(buf);
+      };
+      
+      // Helper lambda for int array conversion
+      auto getStringInt = [&m](const char* key, int def) -> std::string {
+        auto it = m.find(key);
+        if (it != m.end()) return it->second;
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d", def);
+        return std::string(buf);
+      };
+      
+      // Read all TPMS values using sq->
+      tpms_temp        = getBool("tpms.temp", sq->m_tpms_temp_enable);
+      enable           = getBool("tpms.alert.enable", sq->m_tpms_alert_enable);
+      TPMS_FL          = getStringInt("TPMS_FL", sq->m_tpms_index[0]);
+      TPMS_FR          = getStringInt("TPMS_FR", sq->m_tpms_index[1]);
+      TPMS_RL          = getStringInt("TPMS_RL", sq->m_tpms_index[2]);
+      TPMS_RR          = getStringInt("TPMS_RR", sq->m_tpms_index[3]);
+      front_pressure   = getString("tpms.front.pressure", sq->m_front_pressure);
+      rear_pressure    = getString("tpms.rear.pressure", sq->m_rear_pressure);
+      pressure_warning = getString("tpms.value.warn", sq->m_pressure_warning);
+      pressure_alert   = getString("tpms.value.alert", sq->m_pressure_alert);
+    } else {
+      char buf[16];
+      
+      tpms_temp        = sq->m_tpms_temp_enable;
+      enable           = sq->m_tpms_alert_enable;
+      
+      snprintf(buf, sizeof(buf), "%d", sq->m_tpms_index[0]);
+      TPMS_FL = buf;
+      snprintf(buf, sizeof(buf), "%d", sq->m_tpms_index[1]);
+      TPMS_FR = buf;
+      snprintf(buf, sizeof(buf), "%d", sq->m_tpms_index[2]);
+      TPMS_RL = buf;
+      snprintf(buf, sizeof(buf), "%d", sq->m_tpms_index[3]);
+      TPMS_RR = buf;
+      
+      snprintf(buf, sizeof(buf), "%.0f", sq->m_front_pressure);
+      front_pressure = buf;
+      snprintf(buf, sizeof(buf), "%.0f", sq->m_rear_pressure);
+      rear_pressure = buf;
+      snprintf(buf, sizeof(buf), "%.0f", sq->m_pressure_warning);
+      pressure_warning = buf;
+      snprintf(buf, sizeof(buf), "%.0f", sq->m_pressure_alert);
+      pressure_alert = buf;
+    }
   }
       
   c.head(200);
@@ -425,8 +549,8 @@ void OvmsVehicleSmartEQ::WebCfgTPMS(PageEntry_t& p, PageContext_t& c) {
 
   // TPMS settings
   c.fieldset_start("TPMS Settings");
-  c.input_checkbox("Enable iOS TPMS fix", "iosfix", iosfix,
-    "<p>Set External Temperatures to TPMS Temperatures to Display Tire Pressures in iOS App Open Vehicle</p>");
+  c.input_checkbox("Enable TPMS Temperature", "tpms.temp", tpms_temp,
+    "<p>enable TPMS Tire Temperatures display</p>");
   c.input_checkbox("Enable TPMS Alert", "enable", enable,
     "<p>enable TPMS Tire Pressures low/high alert</p>");
   c.input_slider("Front Tire Pressure", "front_pressure", 3, "kPa",-1, atof(front_pressure.c_str()), 220, 170, 350, 5,
@@ -464,6 +588,140 @@ void OvmsVehicleSmartEQ::WebCfgTPMS(PageEntry_t& p, PageContext_t& c) {
   c.input_select_option("Rear_Left",   "2", TPMS_RR == "2");
   c.input_select_option("Rear_Right",  "3", TPMS_RR == "3");
   c.input_select_end();
+  c.fieldset_end();
+
+  c.print("<hr>");
+    c.input_button("default", "Save");
+    c.form_end();
+    c.panel_end();
+  c.done();
+}
+
+/**
+ * WebCfgADC: ADC Configuration (URL /xsq/adc)
+ */
+void OvmsVehicleSmartEQ::WebCfgADC(PageEntry_t& p, PageContext_t& c) {
+  OvmsVehicleSmartEQ* sq = (OvmsVehicleSmartEQ*)MyVehicleFactory.ActiveVehicle();
+  if (!sq) {
+      c.head(400);
+      c.alert("danger", "Error: smartEQ vehicle not available");
+      c.done();
+      return;
+  }
+  std::string error, info, adc_factor, onboard_12v, adc_history;
+  bool calcADCfactor;
+  bool header_sent = false;
+  bool is_calc_request = (p.uri == "/xsq/adc" && c.getvar("action") == "calc");
+
+  if (c.method == "POST") {
+    // Process form submission
+    calcADCfactor = (c.getvar("calcADCfactor") == "yes");
+    adc_factor  = c.getvar("adc_factor");
+    onboard_12v  = c.getvar("onboard_12v");
+    if (is_calc_request) {
+      std::string cmd = "xsq calcadc";
+      if (!onboard_12v.empty()) {
+        cmd += " ";
+        cmd += onboard_12v;
+      }
+      std::string cmd_output = MyWebServer.ExecuteCommand(cmd);
+      if (cmd_output.empty())
+        cmd_output = "Command executed.";
+      std::string alert_type = (cmd_output.rfind("Error", 0) == 0) ? "danger" : "success";
+      info = "<p class=\"lead\">ADC calculation command output</p><pre>" +
+        c.encode_html(cmd_output) + "</pre>";
+      c.head(200);
+      header_sent = true;
+      c.alert(alert_type.c_str(), info.c_str());
+
+      // Refresh values from config/metrics to show latest state after command execution
+      calcADCfactor = MyConfig.GetParamValueBool("xsq", "calc.adcfactor", calcADCfactor);
+      adc_factor  = MyConfig.GetParamValue("system.adc", "factor12v", adc_factor.empty() ? "195.7" : adc_factor);
+      if (sq->mt_evc_LV_USM_volt) {
+        std::string latest = sq->mt_evc_LV_USM_volt->AsString("0.000");
+        if (!latest.empty())
+          onboard_12v = latest;
+      }
+      if (onboard_12v.empty())
+        onboard_12v  = sq->mt_evc_LV_USM_volt->AsString("0.000");
+      if (onboard_12v.empty())
+        onboard_12v = "12.600";
+      if (sq->mt_adc_factor_history)
+        adc_history = sq->mt_adc_factor_history->AsString();
+    }
+    else if (error.empty()) {
+      MyConfig.SetParamValue("system.adc", "factor12v", adc_factor);
+      MyConfig.SetParamValueBool("xsq", "calc.adcfactor", calcADCfactor);
+
+      // Success response
+      info = "<p>ADC settings updated successfully</p>";
+      c.head(200);
+      header_sent = true;
+      c.alert("success", info.c_str());
+      MyWebServer.OutputHome(p, c);
+      c.done();
+      return;
+    }
+    else {
+      // Error response
+      error = "<p class=\"lead\">Error!</p><ul class=\"errorlist\">" + error + "</ul>";
+      c.head(400);
+      header_sent = true;
+      c.alert("danger", error.c_str());
+    }
+  } else {
+    // read configuration:
+    calcADCfactor = MyConfig.GetParamValueBool("xsq", "calc.adcfactor", false);
+    adc_factor  = MyConfig.GetParamValue("system.adc", "factor12v", "195.7");
+    if (sq->mt_evc_LV_USM_volt)
+      onboard_12v  = sq->mt_evc_LV_USM_volt->AsString("0.000");
+    if (onboard_12v.empty())
+      onboard_12v = "12.600";
+    if (sq->mt_adc_factor_history)
+      adc_history = sq->mt_adc_factor_history->AsString();
+    c.head(200);
+    header_sent = true;
+  }
+
+  // in case of validation error keep submitted values visible:
+  if (c.method == "POST") {
+    if (adc_factor.empty())
+      adc_factor = "195.7";
+    if (onboard_12v.empty())
+      onboard_12v = "12.600";
+  }
+
+  if (adc_history.empty() && sq->mt_adc_factor_history)
+    adc_history = sq->mt_adc_factor_history->AsString();
+
+  if (!header_sent) {
+    c.head(200);
+    header_sent = true;
+  }
+      
+  c.panel_start("primary", "ADC Configuration");
+  c.form_start(p.uri);
+
+  // ADC settings
+  c.fieldset_start("ADC Settings");
+  c.input_checkbox("Enable automatic recalculation of ADC factor", "calcADCfactor", calcADCfactor,
+      "<p>Enable = Automatic recalculation of the ADC factor for the 12V battery voltage measurement.</p>"
+      "<p>The ADC factor is recalculated one time each HV charging process by CAN 12V measure.</p>"
+      "<p>This ensures that the 12V battery voltage is always measured correctly.</p>");
+  if (!adc_history.empty()) {
+    c.input_text("History of calculated ADC factors", "adc_history", adc_history.c_str(), "no historical ADC values",
+      "<p>History of calculated ADC factors.</p><p>Most recent last, max 20 values.</p>");
+  }
+  c.input_slider("ADC factor", "adc_factor", 5, "", -1, atof(adc_factor.c_str()), 195.7, 160, 230, 0.01,
+    "<p>Factor for the 12V battery voltage measurement by ADC.</p>"
+    "<p>To calibrate the 12V ADC measurement.</p>"
+    "<p>Default 195.7</p>");
+  c.input_slider("12V measured", "onboard_12v", 3, "V",-1, atof(onboard_12v.c_str()), 12.60, 11.00, 15.00, 0.01,
+    "<p>Set 12V battery voltage measured for ADC calibration.</p>"
+    "<p>On page load = CAN voltage measured value. (xsq.evc.12V.usm.volt)</p>");
+  c.printf("<input type=\"hidden\" name=\"onboard_12v_submit\" id=\"onboard_12v_submit\" value=\"%s\">\n",
+           _attr(onboard_12v.c_str()));
+  c.input_button("default", "ADC calculation", "action", "calc");
   c.fieldset_end();
 
   c.print("<hr>");

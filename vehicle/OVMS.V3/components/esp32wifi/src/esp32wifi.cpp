@@ -43,6 +43,7 @@ static const char *TAG = "esp32wifi";
 #include "ovms_events.h"
 #include "metrics_standard.h"
 #include "ovms_notify.h"
+#include "string_writer.h"
 #if ESP_IDF_VERSION_MAJOR >= 4
 #include <esp_wifi_types.h>
 #endif
@@ -184,7 +185,18 @@ void wifi_mode_apclient(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int
     return;
     }
 
-  std::string appassword = MyConfig.GetParamValue("wifi.ap", argv[0]);
+  std::string apssid = (argc >= 1) ? argv[0] : "";
+  if (apssid == "")
+    {
+    apssid = MyConfig.GetParamValue("auto", "wifi.ssid.ap");
+    }
+  if (apssid == "")
+    {
+    writer->puts("Error: no AP SSID given and no auto start AP SSID defined");
+    return;
+    }
+
+  std::string appassword = MyConfig.GetParamValue("wifi.ap", apssid);
   if (appassword.empty())
     {
     writer->puts("Error: SSID password must be defined in config wifi.ap");
@@ -284,6 +296,20 @@ void wifi_reconnect(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int arg
   me->Reconnect(writer);
   }
 
+void wifi_restart(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv)
+  {
+  esp32wifi *me = MyPeripherals->m_esp32wifi;
+  if (me == NULL)
+    {
+    writer->puts("Error: wifi peripheral could not be found");
+    return;
+    }
+
+  writer->puts("Restarting Wifi...");
+  vTaskDelay(pdMS_TO_TICKS(100));
+  me->Restart();
+  }
+
 void wifi_status(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv)
   {
   esp32wifi *me = MyPeripherals->m_esp32wifi;
@@ -338,6 +364,7 @@ esp32wifiInit::esp32wifiInit()
   cmd_wifi->RegisterCommand("scan", "Perform a wifi scan", wifi_scan, "[-j]\n-j = output in JSON format", 0, 1);
   cmd_wifi->RegisterCommand("status","Show wifi status",wifi_status);
   cmd_wifi->RegisterCommand("reconnect","Reconnect wifi client",wifi_reconnect);
+  cmd_wifi->RegisterCommand("restart","Restart Wifi network into default/boot config",wifi_restart);
 
   OvmsCommand* cmd_mode = cmd_wifi->RegisterCommand("mode","WIFI mode framework");
   cmd_mode->RegisterCommand("client","Connect to a WIFI network as a client",wifi_mode_client,
@@ -346,9 +373,10 @@ esp32wifiInit::esp32wifiInit()
     "Set <bssid> to a MAC address to bind to a specific access point.", 0, 2);
   cmd_mode->RegisterCommand("ap","Acts as a WIFI Access Point",wifi_mode_ap, "<ssid>", 1, 1);
   cmd_mode->RegisterCommand("apclient","Acts as a WIFI Access Point and Client",wifi_mode_apclient,
-    "<apssid> [<stassid>] [<stabssid>]\n"
+    "[<apssid>] [<stassid>] [<stabssid>]\n"
+    "Omit <apssid> or pass empty string to use default (autostart) AP SSID.\n"
     "Omit <stassid> or pass empty string to activate scanning mode.\n"
-    "Set <stabssid> to a MAC address to bind to a specific access point.", 1, 3);
+    "Set <stabssid> to a MAC address to bind to a specific access point.", 0, 3);
   cmd_mode->RegisterCommand("off","Turn off wifi networking",wifi_mode_off);
   OvmsCommand* cmd_mode_ip = cmd_wifi->RegisterCommand("ip","WIFI static/dhcp ip framework");
   cmd_mode_ip->RegisterCommand("static","Set static ip, subnet, gateway",wifi_ip,
@@ -1404,6 +1432,15 @@ void esp32wifi::EventWifiScanDone(std::string event, void* data)
 void esp32wifi::EventSystemShuttingDown(std::string event, void* data)
   {
   PowerDown();
+  }
+
+void esp32wifi::SupportSummary(OvmsWriter* writer)
+  {
+  StringWriter output;
+  output.assign("WIFI Status\n");
+  OutputStatus(COMMAND_RESULT_VERBOSE, &output);
+  replace_substrings(output, "\n", "\n  ");
+  writer->write(output.data(), output.size());
   }
 
 void esp32wifi::OutputStatus(int verbosity, OvmsWriter* writer)
