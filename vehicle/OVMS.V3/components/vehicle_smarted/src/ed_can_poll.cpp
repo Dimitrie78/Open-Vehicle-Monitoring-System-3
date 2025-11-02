@@ -175,7 +175,7 @@ void OvmsVehicleSmartED::ObdInitPoll() {
   m_bms_readingspermodule_c = 0;
 
   m_bms_limit_cmin = 1000;
-  m_bms_limit_cmax = 22000;
+  m_bms_limit_cmax = 30000;
   
   poll_AC = false;
   poll_AC_count = 0;
