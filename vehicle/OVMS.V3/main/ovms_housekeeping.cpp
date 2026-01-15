@@ -69,6 +69,10 @@ static const char *TAG = "housekeeping";
 #define AUTO_INIT_INHIBIT_CRASHCOUNT    5
 
 static int tick = 0;
+#ifdef CONFIG_OVMS_COMP_ADC
+static average_util_t<int32_t,4>  aux_avg_v;
+static float aux_factor = 195.7;
+#endif
 
 void HousekeepingUpdate12V()
   {
@@ -79,14 +83,13 @@ void HousekeepingUpdate12V()
   if (MyPeripherals == NULL)
     return;
 
-  // Allow the user to adjust the ADC conversion factor
-  float f = MyConfig.GetParamValueFloat("system.adc","factor12v");
-  if (f == 0) f = 195.7;
-  float v = (float)MyPeripherals->m_esp32adc->read() / f;
   // smooth out ADC errors & noise:
-  if (m1->AsFloat() != 0)
-    v = (m1->AsFloat() * 4 + v) / 5;
-  v = trunc(v*100) / 100;
+  aux_avg_v.add(MyPeripherals->m_esp32adc->read());
+
+  // Allow the user to adjust the ADC conversion factor
+  float v = (float)aux_avg_v.get() / aux_factor;
+  // Round to 2 decimal places
+  v = truncf((v*100)+0.5) / 100;
   if (v < 1.0) v=0;
   m1->SetValue(v);
   if (StandardMetrics.ms_v_bat_12v_voltage_ref->AsFloat() == 0)
@@ -165,6 +168,12 @@ Housekeeping::Housekeeping()
   MyEvents.RegisterEvent(TAG,"housekeeping.init", std::bind(&Housekeeping::Init, this, _1, _2));
   MyEvents.RegisterEvent(TAG,"ticker.10", std::bind(&Housekeeping::Metrics, this, _1, _2));
   MyEvents.RegisterEvent(TAG,"ticker.300", std::bind(&Housekeeping::TimeLogger, this, _1, _2));
+
+#ifdef CONFIG_OVMS_COMP_ADC
+  MyEvents.RegisterEvent(TAG, "config.changed", std::bind(&Housekeeping::ConfigChanged, this, _1, _2));
+  MyEvents.RegisterEvent(TAG, "config.mounted", std::bind(&Housekeeping::ConfigChanged, this, _1, _2));
+  ConfigChanged("config.mounted", nullptr);
+#endif
 
   // Fire off the event that causes us to be called back in Events tasks context
   MyEvents.SignalEvent("housekeeping.init", NULL);
@@ -268,6 +277,22 @@ void Housekeeping::Init(std::string event, void* data)
   Metrics(event,data); // Causes the metrics to be produced
   }
 
+#ifdef CONFIG_OVMS_COMP_ADC
+void Housekeeping::ConfigChanged(std::string event, void* data)
+  {
+  OvmsConfigParam* param = (OvmsConfigParam*) data;
+
+  if (!param || param->GetName() == "system.adc")
+    {
+    // Allow the user to adjust the ADC conversion factor
+    float f = MyConfig.GetParamValueFloat("system.adc","factor12v");
+    if (f == 0) f = 195.7;
+    aux_factor = f;
+    }
+  }
+#endif
+
+
 void Housekeeping::Metrics(std::string event, void* data)
   {
   OvmsMetricInt* m2 = StandardMetrics.ms_m_tasks;
@@ -286,14 +311,7 @@ void Housekeeping::Metrics(std::string event, void* data)
   // set boot stable flag after some seconds uptime:
   if (!MyBoot.GetStable() && monotonictime >= AUTO_INIT_STABLE_TIME)
     {
-    size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT|MALLOC_CAP_INTERNAL);
-    size_t free_32bit = heap_caps_get_free_size(MALLOC_CAP_32BIT|MALLOC_CAP_INTERNAL);
-    size_t lgst_8bit = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT|MALLOC_CAP_INTERNAL);
-    size_t free_spiram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-    size_t lgst_spiram = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
-    ESP_LOGI(TAG, "System considered stable (RAM: 8b=%zu-%zu 32b=%zu SPI=%zu-%zu)",
-      lgst_8bit, free_8bit, free_32bit-free_8bit, lgst_spiram, free_spiram);
-
+    HeapLogger("System considered stable");
     MyBoot.SetStable();
     // …and send debug crash data as necessary:
     MyBoot.NotifyDebugCrash();
@@ -310,13 +328,18 @@ void Housekeeping::TimeLogger(std::string event, void* data)
 
   if (strftime(tb, sizeof(tb), "%Y-%m-%d %H:%M:%S %Z", &tmu) > 0)
     {
-    size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT|MALLOC_CAP_INTERNAL);
-    size_t free_32bit = heap_caps_get_free_size(MALLOC_CAP_32BIT|MALLOC_CAP_INTERNAL);
-    size_t lgst_8bit = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT|MALLOC_CAP_INTERNAL);
-    size_t free_spiram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-    size_t lgst_spiram = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
-
-    ESP_LOGI(TAG, "%.24s (RAM: 8b=%zu-%zu 32b=%zu SPI=%zu-%zu)",
-      tb, lgst_8bit, free_8bit, free_32bit-free_8bit, lgst_spiram, free_spiram);
+    HeapLogger(tb);
     }
+  }
+
+void Housekeeping::HeapLogger(const char* checkpoint)
+  {
+  size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT|MALLOC_CAP_INTERNAL);
+  size_t free_32bit = heap_caps_get_free_size(MALLOC_CAP_32BIT|MALLOC_CAP_INTERNAL);
+  size_t lgst_8bit = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT|MALLOC_CAP_INTERNAL);
+  size_t free_spiram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  size_t lgst_spiram = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+
+  ESP_LOGI(TAG, "%s (RAM: 8b=%zu-%zu 32b=%zu SPI=%zu-%zu)",
+    checkpoint, lgst_8bit, free_8bit, free_32bit-free_8bit, lgst_spiram, free_spiram);
   }

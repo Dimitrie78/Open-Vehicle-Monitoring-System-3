@@ -42,6 +42,8 @@ static const char *TAG = "esp32wifi";
 #include "ovms_peripherals.h"
 #include "ovms_events.h"
 #include "metrics_standard.h"
+#include "ovms_notify.h"
+#include "string_writer.h"
 #if ESP_IDF_VERSION_MAJOR >= 4
 #include <esp_wifi_types.h>
 #endif
@@ -157,7 +159,18 @@ void wifi_mode_ap(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc,
     return;
     }
 
-  std::string password = MyConfig.GetParamValue("wifi.ap", argv[0]);
+  std::string apssid = (argc >= 1) ? argv[0] : "";
+  if (apssid == "")
+    {
+    apssid = MyConfig.GetParamValue("auto", "wifi.ssid.ap");
+    }
+  if (apssid == "")
+    {
+    writer->puts("Error: no AP SSID given and no auto start AP SSID defined");
+    return;
+    }
+
+  std::string password = MyConfig.GetParamValue("wifi.ap", apssid);
   if (password.empty())
     {
     writer->puts("Error: SSID password must be defined in config wifi.ap");
@@ -171,7 +184,7 @@ void wifi_mode_ap(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc,
     }
 
   writer->puts("Starting WIFI as access point...");
-  me->StartAccessPointMode(argv[0],password);
+  me->StartAccessPointMode(apssid,password);
   }
 
 void wifi_mode_apclient(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv)
@@ -183,7 +196,18 @@ void wifi_mode_apclient(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int
     return;
     }
 
-  std::string appassword = MyConfig.GetParamValue("wifi.ap", argv[0]);
+  std::string apssid = (argc >= 1) ? argv[0] : "";
+  if (apssid == "")
+    {
+    apssid = MyConfig.GetParamValue("auto", "wifi.ssid.ap");
+    }
+  if (apssid == "")
+    {
+    writer->puts("Error: no AP SSID given and no auto start AP SSID defined");
+    return;
+    }
+
+  std::string appassword = MyConfig.GetParamValue("wifi.ap", apssid);
   if (appassword.empty())
     {
     writer->puts("Error: SSID password must be defined in config wifi.ap");
@@ -226,12 +250,12 @@ void wifi_mode_apclient(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int
     writer->printf("Starting WIFI as Access Point and client to %s (%02x:%02x:%02x:%02x:%02x:%02x)...\n",
       stassid.c_str(),
       bssid[0],bssid[1],bssid[2],bssid[3],bssid[4],bssid[5]);
-    me->StartAccessPointClientMode(argv[0], appassword, stassid, stapassword, bssid);
+    me->StartAccessPointClientMode(apssid, appassword, stassid, stapassword, bssid);
     }
   else
     {
     writer->puts("Starting WIFI as Access Point and Client...");
-    me->StartAccessPointClientMode(argv[0], appassword, stassid, stapassword);
+    me->StartAccessPointClientMode(apssid, appassword, stassid, stapassword);
     }
   }
 
@@ -281,6 +305,20 @@ void wifi_reconnect(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int arg
     }
 
   me->Reconnect(writer);
+  }
+
+void wifi_restart(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv)
+  {
+  esp32wifi *me = MyPeripherals->m_esp32wifi;
+  if (me == NULL)
+    {
+    writer->puts("Error: wifi peripheral could not be found");
+    return;
+    }
+
+  writer->puts("Restarting Wifi...");
+  vTaskDelay(pdMS_TO_TICKS(100));
+  me->Restart();
   }
 
 void wifi_status(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv)
@@ -337,17 +375,21 @@ esp32wifiInit::esp32wifiInit()
   cmd_wifi->RegisterCommand("scan", "Perform a wifi scan", wifi_scan, "[-j]\n-j = output in JSON format", 0, 1);
   cmd_wifi->RegisterCommand("status","Show wifi status",wifi_status);
   cmd_wifi->RegisterCommand("reconnect","Reconnect wifi client",wifi_reconnect);
+  cmd_wifi->RegisterCommand("restart","Restart Wifi network into default/boot config",wifi_restart);
 
   OvmsCommand* cmd_mode = cmd_wifi->RegisterCommand("mode","WIFI mode framework");
   cmd_mode->RegisterCommand("client","Connect to a WIFI network as a client",wifi_mode_client,
     "[<ssid>] [<bssid>]\n"
     "Omit <ssid> or pass empty string to activate scanning mode.\n"
     "Set <bssid> to a MAC address to bind to a specific access point.", 0, 2);
-  cmd_mode->RegisterCommand("ap","Acts as a WIFI Access Point",wifi_mode_ap, "<ssid>", 1, 1);
+  cmd_mode->RegisterCommand("ap","Acts as a WIFI Access Point",wifi_mode_ap,
+    "[<apssid>]\n"
+    "Omit <apssid> or pass empty string to use default (autostart) AP SSID.\n", 0, 1);
   cmd_mode->RegisterCommand("apclient","Acts as a WIFI Access Point and Client",wifi_mode_apclient,
-    "<apssid> [<stassid>] [<stabssid>]\n"
+    "[<apssid>] [<stassid>] [<stabssid>]\n"
+    "Omit <apssid> or pass empty string to use default (autostart) AP SSID.\n"
     "Omit <stassid> or pass empty string to activate scanning mode.\n"
-    "Set <stabssid> to a MAC address to bind to a specific access point.", 1, 3);
+    "Set <stabssid> to a MAC address to bind to a specific access point.", 0, 3);
   cmd_mode->RegisterCommand("off","Turn off wifi networking",wifi_mode_off);
   OvmsCommand* cmd_mode_ip = cmd_wifi->RegisterCommand("ip","WIFI static/dhcp ip framework");
   cmd_mode_ip->RegisterCommand("static","Set static ip, subnet, gateway",wifi_ip,
@@ -376,6 +418,7 @@ esp32wifi::esp32wifi(const char* name)
   m_sta_connected = false;
   m_sta_rssi = -1270;
   m_good_signal = false;
+  m_ap2client_active = false;
   memset(&m_wifi_ap_cfg,0,sizeof(m_wifi_ap_cfg));
   memset(&m_wifi_sta_cfg,0,sizeof(m_wifi_sta_cfg));
   memset(&m_mac_ap,0,sizeof(m_mac_ap));
@@ -673,6 +716,10 @@ void esp32wifi::StartAccessPointClientMode(std::string apssid, std::string appas
   m_ap_password = appassword;
   m_sta_ssid = stassid;
   m_sta_password = stapassword;
+  m_ap2client_enabled = MyConfig.GetParamValueBool("network", "wifi.ap2client.enable", false);           //!< Wifi Mode APClient to client enable/disable
+  m_ap2client_timeout = MyConfig.GetParamValueInt("network", "wifi.ap2client.timeout", 30) * 60;        //!< Wifi Mode APClient to client timeout in minutes to seconds for ticker1
+  m_ap2client_active = true;  // APClient mode active
+
   if (stabssid)
     {
     m_sta_bssid_set = true;
@@ -779,6 +826,37 @@ void esp32wifi::StopStation()
   memset(&m_ip_info_ap,0,sizeof(m_ip_info_ap));
 
   UpdateNetMetrics();
+  }
+
+void esp32wifi::AP2ClientCheck()
+  {
+    if (m_ap2client_active) 
+    {
+      if (--m_ap2client_timeout <= 0) 
+      {
+      m_ap2client_active = false;   // disable further timeout checks
+      ESP_LOGI(TAG, "WiFi APCLIENT timeout reached - reverting to client mode");
+
+      if (MyConfig.GetParamValueBool("network", "wifi.ap2client.notify", false))
+        MyNotify.NotifyString("info", "wifi.apclient", "WiFi APCLIENT timeout reached - reverting to client mode");
+      AP2ClientSwitch();
+      }            
+    }
+  }
+
+void esp32wifi::AP2ClientSwitch() {
+  if (m_mode == ESP32WIFI_MODE_APCLIENT) 
+    {
+    ESP_LOGI(TAG, "WiFi AP2Client switch initiated");
+    std::string wifi_ssid_client = MyConfig.GetParamValue("auto", "wifi.ssid.client", "");
+    std::string wifi_pass_client = MyConfig.GetParamValue("wifi.ssid", wifi_ssid_client);
+    vTaskDelay(pdMS_TO_TICKS(500)); // wifi task cleanup time
+    StartClientMode(wifi_ssid_client, wifi_pass_client);
+    }
+  else
+    {
+    ESP_LOGE(TAG, "WiFi AP2Client switch failed. Not in APCLIENT mode");
+    }
   }
 
 wifi_active_scan_time_t esp32wifi::GetScanTime()
@@ -1209,12 +1287,28 @@ void esp32wifi::EventWifiApUpdate(std::string event, void* data)
 #endif
     ESP_LOGI(TAG, "AP station disconnected: id: %d, MAC: " MACSTR,
       sta_disconn.aid, MAC2STR(sta_disconn.mac));
+      m_ap2client_timeout = MyConfig.GetParamValueInt("network", "wifi.ap2client.timeout", 30) * 60;        //!< Wifi Mode APClient to client timeout in minutes to seconds for ticker1
     }
   }
 
 void esp32wifi::EventTimer1(std::string event, void* data)
   {
   UpdateNetMetrics();
+
+  // If in AP+Client mode, check number of connected AP stations and trigger AP->Client timeout if none
+  if (m_mode == ESP32WIFI_MODE_APCLIENT && m_ap2client_enabled && m_ap2client_active)
+    {
+    wifi_sta_list_t sta_list;
+    if (esp_wifi_ap_get_sta_list(&sta_list) == ESP_OK)
+      {
+      if (sta_list.num == 0) AP2ClientCheck();
+      }
+    else
+      {
+      // If query failed, still run timeout check
+      AP2ClientCheck();
+      }
+    }
 
   // reconnect?
   if ((m_mode == ESP32WIFI_MODE_CLIENT || m_mode == ESP32WIFI_MODE_APCLIENT)
@@ -1353,6 +1447,15 @@ void esp32wifi::EventSystemShuttingDown(std::string event, void* data)
   PowerDown();
   }
 
+void esp32wifi::SupportSummary(OvmsWriter* writer)
+  {
+  StringWriter output;
+  output.assign("WIFI Status\n");
+  OutputStatus(COMMAND_RESULT_VERBOSE, &output);
+  replace_substrings(output, "\n", "\n  ");
+  writer->write(output.data(), output.size());
+  }
+
 void esp32wifi::OutputStatus(int verbosity, OvmsWriter* writer)
   {
   writer->printf("Power: %s\nMode: %s\n",
@@ -1418,6 +1521,9 @@ void esp32wifi::ConfigChanged(std::string event, void* data)
     // Network config has been changed, apply:
     m_good_dbm = MyConfig.GetParamValueFloat("network", "wifi.sq.good", -87);
     m_bad_dbm = MyConfig.GetParamValueFloat("network", "wifi.sq.bad", -89);
+    m_ap2client_timeout  = MyConfig.GetParamValueInt("network", "wifi.ap2client.timeout", 30) * 60;        //!< Wifi Mode APClient to client timeout in minutes to seconds for ticker1
+    m_ap2client_enabled  = MyConfig.GetParamValueInt("network", "wifi.ap2client.enable", false);           //!< Wifi Mode APClient to client enable/disable    
+    m_ap2client_active = m_ap2client_enabled;                                                              // Mirror enabled to active
     }
   }
 

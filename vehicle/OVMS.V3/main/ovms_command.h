@@ -55,7 +55,6 @@ class OvmsWriter;
 class OvmsCommand;
 class OvmsCommandMap;
 class LogBuffers;
-typedef std::map<TaskHandle_t, LogBuffers*> PartialLogs;
 typedef bool (*InsertCallback)(OvmsWriter* writer, void* userData, char);
 
 class OvmsWriter
@@ -104,17 +103,17 @@ class NameMap : public std::map<std::string, T>
       size_t len = strlen(token);
       const T* found = NULL;
       for (typename NameMap<T>::const_iterator it = NameMap<T>::begin(); it != NameMap<T>::end(); ++it)
-	{
-	if (it->first.compare(0, len, token) == 0)
-	  {
-	  if (len == it->first.length())
-	    return &it->second;
-	  if (found)
-	    return NULL;
-	  else
-	    found = &it->second;
-	  }
-	}
+        {
+        if (it->first.compare(0, len, token) == 0)
+          {
+          if (len == it->first.length())
+            return &it->second;
+          if (found)
+            return NULL;
+          else
+            found = &it->second;
+          }
+        }
       return found;
       }
 
@@ -141,19 +140,19 @@ class NameMap : public std::map<std::string, T>
     int Validate(OvmsWriter* writer, int argc, const char* token, bool complete) const
       {
       if (complete)
-	{
-	if (!GetCompletion(writer, token))
-	  return -1;
-	}
+        {
+        if (!GetCompletion(writer, token))
+          return -1;
+        }
       else
-	{
-	if (FindUniquePrefix(token) == NULL)
-	  {
+        {
+        if (FindUniquePrefix(token) == NULL)
+          {
           if (strcmp(token, "?") != 0)
             writer->printf("Error: %s is not defined\n", token);
-	  return -1;
-	  }
-	}
+          return -1;
+          }
+        }
       return argc;
       }
   };
@@ -167,17 +166,17 @@ class CNameMap : public std::map<const char*, T, CmpStrOp>
       size_t len = strlen(token);
       const T* found = NULL;
       for (typename CNameMap<T>::const_iterator it = CNameMap<T>::begin(); it != CNameMap<T>::end(); ++it)
-	{
-	if (strncmp(it->first, token, len) == 0)
-	  {
-	  if (len == strlen(it->first))
-	    return &it->second;
-	  if (found)
-	    return NULL;
-	  else
-	    found = &it->second;
-	  }
-	}
+        {
+        if (strncmp(it->first, token, len) == 0)
+          {
+          if (len == strlen(it->first))
+            return &it->second;
+          if (found)
+            return NULL;
+          else
+            found = &it->second;
+          }
+        }
       return found;
       }
 
@@ -204,19 +203,19 @@ class CNameMap : public std::map<const char*, T, CmpStrOp>
     int Validate(OvmsWriter* writer, int argc, const char* token, bool complete) const
       {
       if (complete)
-	{
-	if (!GetCompletion(writer, token))
-	  return -1;
-	}
+        {
+        if (!GetCompletion(writer, token))
+          return -1;
+        }
       else
-	{
-	if (FindUniquePrefix(token) == NULL)
-	  {
+        {
+        if (FindUniquePrefix(token) == NULL)
+          {
           if (strcmp(token, "?") != 0)
             writer->printf("Error: %s is not defined\n", token);
-	  return -1;
-	  }
-	}
+          return -1;
+          }
+        }
       return argc;
       }
   };
@@ -353,7 +352,6 @@ class OvmsCommandApp : public OvmsWriter
     void DeregisterConsole(OvmsWriter* writer);
     int Log(const char* fmt, ...) __attribute__ ((format (printf, 2, 3)));
     int Log(const char* fmt, va_list args) __attribute__ ((format (printf, 2, 0)));
-    int LogPartial(const char* fmt, ...) __attribute__ ((format (printf, 2, 3)));
     int HexDump(const char* tag, const char* prefix, const char* data, size_t length, size_t colsize=16);
     void Display(OvmsWriter* writer);
 
@@ -389,13 +387,16 @@ class OvmsCommandApp : public OvmsWriter
 
   private:
     OvmsCommand m_root;
+
     typedef std::set<OvmsWriter*> ConsoleSet;
-    ConsoleSet m_consoles;
-    PartialLogs m_partials;
+    ConsoleSet m_consoles;                          // set of registered consoles (= log receivers)
+    OvmsMutex m_consoles_mutex;                     // m_consoles access synchronization
+
     FILE* m_logfile;
     std::string m_logfile_path;
     size_t m_logfile_size;
     size_t m_logfile_maxsize;
+    int m_logfile_syncperiod;
     TaskHandle_t m_logtask;
     OvmsMutex m_logtask_mutex;
     QueueHandle_t m_logtask_queue;

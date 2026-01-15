@@ -46,6 +46,8 @@ static const char *TAG = "ovms-server-v2";
 #include "esp_system.h"
 #include "ovms_utils.h"
 #include "ovms_boot.h"
+#include <iomanip>  // für std::fixed, std::setprecision
+#include <cmath>    // für std::isnan
 #if CONFIG_MG_ENABLE_SSL
 #include "ovms_tls.h"
 #endif
@@ -710,10 +712,18 @@ void OvmsServerV2::ProcessCommand(const char* payload)
         *buffer << "AT+CUSD=1,\"" << sep+1 << "\",15\r\n";
         extram::string msg = buffer->str();
         buffer->str("");
-        if (MyPeripherals->m_cellular_modem->txcmd(msg.c_str(), msg.length()))
-          *buffer << "MP-0 c" << command << ",0";
-        else
+        if (!MyPeripherals->m_cellular_modem->m_cmd_mutex.Lock(0))
+          {
           *buffer << "MP-0 c" << command << ",1,Cannot send command";
+          }
+        else
+          {
+          if (MyPeripherals->m_cellular_modem->txcmd(msg.c_str(), msg.length()))
+            *buffer << "MP-0 c" << command << ",0";
+          else
+            *buffer << "MP-0 c" << command << ",1,Cannot send command";
+          MyPeripherals->m_cellular_modem->m_cmd_mutex.Unlock();
+          }
 #else // #ifdef CONFIG_OVMS_COMP_CELLULAR
         *buffer << "MP-0 c" << command << ",1,No modem";
 #endif // #ifdef CONFIG_OVMS_COMP_CELLULAR
@@ -1005,6 +1015,7 @@ void OvmsServerV2::TransmitMsgStat(bool always)
     StandardMetrics.ms_v_charge_timermode->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_charge_timerstart->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_bat_cac->IsModifiedAndClear(MyOvmsServerV2Modifier) |
+    StandardMetrics.ms_v_bat_capacity->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_charge_duration_full->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_charge_duration_range->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_charge_duration_soc->IsModifiedAndClear(MyOvmsServerV2Modifier) |
@@ -1019,7 +1030,10 @@ void OvmsServerV2::TransmitMsgStat(bool always)
     StandardMetrics.ms_v_charge_power->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_charge_efficiency->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_bat_current->IsModifiedAndClear(MyOvmsServerV2Modifier) |
-    StandardMetrics.ms_v_bat_range_speed->IsModifiedAndClear(MyOvmsServerV2Modifier);
+    StandardMetrics.ms_v_bat_range_speed->IsModifiedAndClear(MyOvmsServerV2Modifier) |
+    StandardMetrics.ms_v_charge_kwh_grid->IsModifiedAndClear(MyOvmsServerV2Modifier) |
+    StandardMetrics.ms_v_charge_kwh_grid_total->IsModifiedAndClear(MyOvmsServerV2Modifier) |
+    StandardMetrics.ms_v_charge_timestamp->IsModifiedAndClear(MyOvmsServerV2Modifier);
 
   // Quick exit if nothing modified
   if ((!always)&&(!modified)) return;
@@ -1110,6 +1124,14 @@ void OvmsServerV2::TransmitMsgStat(bool always)
     << ","
     << std::setprecision(1)
     << StandardMetrics.ms_v_bat_range_speed->AsFloat(0, units_speed)
+    << ","
+    << StandardMetrics.ms_v_charge_kwh_grid->AsFloat()
+    << ","
+    << StandardMetrics.ms_v_charge_kwh_grid_total->AsFloat()
+    << ","
+    << StandardMetrics.ms_v_bat_capacity->AsFloat()
+    << ","
+    << StandardMetrics.ms_v_charge_timestamp->AsString("-1", Seconds, 0)
     ;
 
   Transmit(buffer.str().c_str());
@@ -1144,7 +1166,8 @@ void OvmsServerV2::TransmitMsgGen(bool always)
     StandardMetrics.ms_v_gen_duration_empty->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_gen_duration_range->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_gen_duration_soc->IsModifiedAndClear(MyOvmsServerV2Modifier) |
-    StandardMetrics.ms_v_gen_temp->IsModifiedAndClear(MyOvmsServerV2Modifier);
+    StandardMetrics.ms_v_gen_temp->IsModifiedAndClear(MyOvmsServerV2Modifier) |
+    StandardMetrics.ms_v_gen_timestamp->IsModifiedAndClear(MyOvmsServerV2Modifier);
 
   // Quick exit if nothing modified
   if ((!always)&&(!modified)) return;
@@ -1153,9 +1176,9 @@ void OvmsServerV2::TransmitMsgGen(bool always)
   buffer
     << std::fixed
     << std::setprecision(1)
-    << "MP-0 G"
+    << "MP-0 X"
     << StandardMetrics.ms_v_gen_inprogress->AsBool()
-    << ";"
+    << ","
     << StandardMetrics.ms_v_gen_pilot->AsBool()
     << ","
     << StandardMetrics.ms_v_gen_voltage->AsInt()
@@ -1197,8 +1220,10 @@ void OvmsServerV2::TransmitMsgGen(bool always)
     << StandardMetrics.ms_v_gen_duration_range->AsInt()
     << ","
     << StandardMetrics.ms_v_gen_duration_soc->AsInt()
-    << ";"
+    << ","
     << StandardMetrics.ms_v_gen_temp->AsFloat()
+    << ","
+    << StandardMetrics.ms_v_gen_timestamp->AsString("-1", Seconds, 0)
     ;
 
   Transmit(buffer.str().c_str());
@@ -1297,61 +1322,128 @@ void OvmsServerV2::TransmitMsgTPMS(bool always)
 
   extram::ostringstream buffer;
 
-  // Transmit new "Y" message:
+  // Helper lambda for validity indicator: -1=undefined, 0=stale, 1=valid
+  auto get_validity = [](OvmsMetric* m) -> int {
+    if (!m || !m->IsDefined()) return -1;
+    if (m->IsStale()) return 0;
+    return 1;
+    };
 
-  int defstale_pressure =
-    StandardMetrics.ms_v_tpms_pressure->IsDefined()
-    ? (StandardMetrics.ms_v_tpms_pressure->IsStale() ? 0 : 1)
-    : -1;
-  int defstale_temp =
-    StandardMetrics.ms_v_tpms_temp->IsDefined()
-    ? (StandardMetrics.ms_v_tpms_temp->IsStale() ? 0 : 1)
-    : -1;
-  int defstale_health =
-    StandardMetrics.ms_v_tpms_health->IsDefined()
-    ? (StandardMetrics.ms_v_tpms_health->IsStale() ? 0 : 1)
-    : -1;
-  int defstale_alert =
-    StandardMetrics.ms_v_tpms_alert->IsDefined()
-    ? (StandardMetrics.ms_v_tpms_alert->IsStale() ? 0 : 1)
-    : -1;
-
+  // Get wheel layout
   std::vector<std::string> wheels;
+  bool uses_mapping = false;
   if (MyVehicleFactory.m_currentvehicle)
+    {
     wheels = MyVehicleFactory.m_currentvehicle->GetTpmsLayout();
+    uses_mapping = MyVehicleFactory.m_currentvehicle->UsesTpmsSensorMapping();
+    }
+  
+  int wheel_count = (int)wheels.size();
 
-  buffer
-    << "MP-0 Y"
-    << wheels.size();
-  for (auto wheel : wheels)
+  // Start Y message with wheel count and names
+  buffer << "MP-0 Y" << wheel_count;
+  for (auto& wheel : wheels)
     {
     buffer << "," << wheel;
     }
-  buffer
-    << ","
-    << StandardMetrics.ms_v_tpms_pressure->GetSize()
-    << (StandardMetrics.ms_v_tpms_pressure->GetSize() ? "," : "")
-    << StandardMetrics.ms_v_tpms_pressure->AsString("", kPa, 1)
-    << "," << defstale_pressure
-    << ","
-    << StandardMetrics.ms_v_tpms_temp->GetSize()
-    << (StandardMetrics.ms_v_tpms_temp->GetSize() ? "," : "")
-    << StandardMetrics.ms_v_tpms_temp->AsString("", Celcius, 1)
-    << "," << defstale_temp
-    << ","
-    << StandardMetrics.ms_v_tpms_health->GetSize()
-    << (StandardMetrics.ms_v_tpms_health->GetSize() ? "," : "")
-    << StandardMetrics.ms_v_tpms_health->AsString("", Percentage, 1)
-    << "," << defstale_health
-    << ","
-    << StandardMetrics.ms_v_tpms_alert->GetSize()
-    << (StandardMetrics.ms_v_tpms_alert->GetSize() ? "," : "")
-    << StandardMetrics.ms_v_tpms_alert->AsString("")
-    << "," << defstale_alert
-    ;
+
+  // Pressure section
+  int p_validity = get_validity(StandardMetrics.ms_v_tpms_pressure);
+  if (p_validity == -1)
+    {
+    buffer << ",0,-1";
+    }
+  else
+    {
+    auto pressure = StandardMetrics.ms_v_tpms_pressure->AsVector();
+    buffer << "," << pressure.size();
+    for (size_t i = 0; i < pressure.size(); i++)
+      {
+      if (!std::isnan(pressure[i]))
+        buffer << "," << std::fixed << std::setprecision(1) << pressure[i];
+      else
+        buffer << ",";
+      }
+    buffer << "," << p_validity;
+    }
+
+  // Temperature section
+  int t_validity = get_validity(StandardMetrics.ms_v_tpms_temp);
+  if (t_validity == -1)
+    {
+    buffer << ",0,-1";
+    }
+  else
+    {
+    auto temp = StandardMetrics.ms_v_tpms_temp->AsVector();
+    buffer << "," << temp.size();
+    for (size_t i = 0; i < temp.size(); i++)
+      {
+      if (!std::isnan(temp[i]))
+        buffer << "," << std::fixed << std::setprecision(1) << temp[i];
+      else
+        buffer << ",";
+      }
+    buffer << "," << t_validity;
+    }
+
+  // Health section
+  int h_validity = get_validity(StandardMetrics.ms_v_tpms_health);
+  if (h_validity == -1)
+    {
+    buffer << ",0,-1";
+    }
+  else
+    {
+    auto health = StandardMetrics.ms_v_tpms_health->AsVector();
+    buffer << "," << health.size();
+    for (size_t i = 0; i < health.size(); i++)
+      {
+      if (!std::isnan(health[i]))
+        buffer << "," << std::fixed << std::setprecision(1) << health[i];
+      else
+        buffer << ",";
+      }
+    buffer << "," << h_validity;
+    }
+
+  // Alert section
+  int a_validity = get_validity(StandardMetrics.ms_v_tpms_alert);
+  if (a_validity == -1)
+    {
+    buffer << ",0,-1";
+    }
+  else
+    {
+    auto alert = StandardMetrics.ms_v_tpms_alert->AsVector();
+    buffer << "," << alert.size();
+    for (size_t i = 0; i < alert.size(); i++)
+      {
+      buffer << "," << alert[i];
+      }
+    buffer << "," << a_validity;
+    }
+
+  // Mapping section
+  if (!uses_mapping || wheel_count == 0)
+    {
+    buffer << ",0,-1";
+    }
+  else
+    {
+    buffer << "," << wheel_count;
+    for (int i = 0; i < wheel_count; i++)
+      {
+      int map_idx = MyConfig.GetParamValueInt("vehicle", 
+                      std::string("tpms.") + str_tolower(wheels[i]), i);
+      buffer << "," << map_idx;
+      }
+    buffer << ",1";  // mapping is always valid if defined
+    }
+
   Transmit(buffer.str().c_str());
 
-  // Transmit legacy "W" message (fixed four tyres, only pressures & temperatures):
+  // Transmit legacy "W" message (fixed four tyres, only for iOS OVMS app 1.8.6 pressures & temperatures):
 
   bool stale =
     StandardMetrics.ms_v_tpms_pressure->IsStale() ||
@@ -1373,25 +1465,33 @@ void OvmsServerV2::TransmitMsgTPMS(bool always)
   else
     { defstale = 1; }
 
+  auto temp = StandardMetrics.ms_v_tpms_temp->AsVector();
+  if (temp.size() < 4)
+    temp.resize(4);
+  bool ios_tpms_workaround = MyConfig.GetParamValueBool("server.v2", "workaround.ios_tpms_display", true);  // default enabled, effective only for iOS OVMS app 1.8.6
+  int temp_workaround = 1; // workaround value
+  // iOS TPMS display workaround: if no TPMS temperature data available, but pressure is there,
+  // send the temp_workaround values as TPMS temperature, so iOS OVMS app 1.8.6 can at least show pressures. 
+
   buffer.str("");
   buffer.clear();
   buffer
     << "MP-0 W"
     << StandardMetrics.ms_v_tpms_pressure->ElemAsString(MS_V_TPMS_IDX_FR, "0", PSI)
     << ","
-    << StandardMetrics.ms_v_tpms_temp->ElemAsString(MS_V_TPMS_IDX_FR, "0")
+    << (temp[MS_V_TPMS_IDX_FR] > temp_workaround || !ios_tpms_workaround ? temp[MS_V_TPMS_IDX_FR] : temp_workaround)
     << ","
     << StandardMetrics.ms_v_tpms_pressure->ElemAsString(MS_V_TPMS_IDX_RR, "0", PSI)
     << ","
-    << StandardMetrics.ms_v_tpms_temp->ElemAsString(MS_V_TPMS_IDX_RR, "0")
+    << (temp[MS_V_TPMS_IDX_RR] > temp_workaround || !ios_tpms_workaround ? temp[MS_V_TPMS_IDX_RR] : temp_workaround)
     << ","
     << StandardMetrics.ms_v_tpms_pressure->ElemAsString(MS_V_TPMS_IDX_FL, "0", PSI)
     << ","
-    << StandardMetrics.ms_v_tpms_temp->ElemAsString(MS_V_TPMS_IDX_FL, "0")
+    << (temp[MS_V_TPMS_IDX_FL] > temp_workaround || !ios_tpms_workaround ? temp[MS_V_TPMS_IDX_FL] : temp_workaround)
     << ","
     << StandardMetrics.ms_v_tpms_pressure->ElemAsString(MS_V_TPMS_IDX_RL, "0", PSI)
     << ","
-    << StandardMetrics.ms_v_tpms_temp->ElemAsString(MS_V_TPMS_IDX_RL, "0")
+    << (temp[MS_V_TPMS_IDX_RL] > temp_workaround || !ios_tpms_workaround ? temp[MS_V_TPMS_IDX_RL] : temp_workaround)
     << ","
     << defstale
     ;
@@ -1418,7 +1518,8 @@ void OvmsServerV2::TransmitMsgFirmware(bool always)
     StandardMetrics.ms_m_net_provider->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_env_service_range->IsModifiedAndClear(MyOvmsServerV2Modifier) |
     StandardMetrics.ms_v_env_service_time->IsModifiedAndClear(MyOvmsServerV2Modifier) |
-    StandardMetrics.ms_m_hardware->IsModifiedAndClear(MyOvmsServerV2Modifier);
+    StandardMetrics.ms_m_hardware->IsModifiedAndClear(MyOvmsServerV2Modifier) |
+    StandardMetrics.ms_m_net_mdm_mode->IsModifiedAndClear(MyOvmsServerV2Modifier);
 
   // Quick exit if nothing modified
   if ((!always)&&(!modified)) return;
@@ -1445,6 +1546,8 @@ void OvmsServerV2::TransmitMsgFirmware(bool always)
     << StandardMetrics.ms_v_env_service_time->AsString("-1", Seconds, 0)
     << ","
     << mp_encode(StandardMetrics.ms_m_hardware->AsString(""))
+    << ","
+    << mp_encode(StandardMetrics.ms_m_net_mdm_mode->AsString(""))
     ;
 
   Transmit(buffer.str().c_str());
@@ -1814,6 +1917,7 @@ void OvmsServerV2::MetricModified(OvmsMetric* metric)
       (metric == StandardMetrics.ms_v_charge_inprogress)||
       (metric == StandardMetrics.ms_v_env_cooling)||
       (metric == StandardMetrics.ms_v_bat_cac)||
+      (metric == StandardMetrics.ms_v_bat_capacity)||
       (metric == StandardMetrics.ms_v_bat_soh))
     {
     m_now_stat = true;
@@ -2150,12 +2254,12 @@ OvmsServerV2::OvmsServerV2(const char* name)
 
   if (MyOvmsServerV2Reader == 0)
     {
-    MyOvmsServerV2Reader = MyNotify.RegisterReader("ovmsv2", COMMAND_RESULT_NORMAL, std::bind(OvmsServerV2ReaderCallback, _1, _2),
+    MyOvmsServerV2Reader = MyNotify.RegisterReader("ovmsv2", COMMAND_RESULT_VERBOSE, std::bind(OvmsServerV2ReaderCallback, _1, _2),
                                                    true, std::bind(OvmsServerV2ReaderFilterCallback, _1, _2));
     }
   else
     {
-    MyNotify.RegisterReader(MyOvmsServerV2Reader, "ovmsv2", COMMAND_RESULT_NORMAL, std::bind(OvmsServerV2ReaderCallback, _1, _2),
+    MyNotify.RegisterReader(MyOvmsServerV2Reader, "ovmsv2", COMMAND_RESULT_VERBOSE, std::bind(OvmsServerV2ReaderCallback, _1, _2),
                             true, std::bind(OvmsServerV2ReaderFilterCallback, _1, _2));
     }
 

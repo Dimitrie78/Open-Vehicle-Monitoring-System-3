@@ -54,11 +54,16 @@ void OvmsVehicleVWeUp::WebInit()
 {
   // vehicle menu:
   MyWebServer.RegisterPage("/xvu/features", "Features", WebCfgFeatures, PageMenu_Vehicle, PageAuth_Cookie);
-  MyWebServer.RegisterPage("/xvu/climate", "Climate control", WebCfgClimate, PageMenu_Vehicle, PageAuth_Cookie);
+  if (HasT26()) {
+    // only useful with T26 access:
+    MyWebServer.RegisterPage("/xvu/climate", "Climate Control", WebCfgClimate, PageMenu_Vehicle, PageAuth_Cookie);
+    MyWebServer.RegisterPage("/xvu/climate_schedule", "Climate Schedule", OvmsWebServer::HandleCfgPreconditionSchedule, PageMenu_Vehicle, PageAuth_Cookie);
+  }
   if (HasOBD()) {
     // only useful with OBD metrics:
     MyWebServer.RegisterPage("/xvu/metrics_charger", "Charging Metrics", WebDispChgMetrics, PageMenu_Vehicle, PageAuth_Cookie);
     MyWebServer.RegisterPage("/xvu/battmon", "Battery Monitor", OvmsWebServer::HandleBmsCellMonitor, PageMenu_Vehicle, PageAuth_Cookie);
+    MyWebServer.RegisterPage("/xvu/battsoh", "Battery Health", WebDispBattHealth, PageMenu_Vehicle, PageAuth_Cookie);
   }
 }
 
@@ -69,8 +74,10 @@ void OvmsVehicleVWeUp::WebDeInit()
 {
   MyWebServer.DeregisterPage("/xvu/features");
   MyWebServer.DeregisterPage("/xvu/climate");
+  MyWebServer.DeregisterPage("/xvu/climate_schedule");
   MyWebServer.DeregisterPage("/xvu/metrics_charger");
   MyWebServer.DeregisterPage("/xvu/battmon");
+  MyWebServer.DeregisterPage("/xvu/battsoh");
 }
 
 /**
@@ -78,6 +85,7 @@ void OvmsVehicleVWeUp::WebDeInit()
  */
 void OvmsVehicleVWeUp::WebCfgFeatures(PageEntry_t &p, PageContext_t &c)
 {
+  auto lock = MyConfig.Lock();
   ConfigParamMap pmap = MyConfig.GetParamMap("xvu");
   ConfigParamMap nmap = pmap;
   std::string error, warn;
@@ -205,13 +213,6 @@ void OvmsVehicleVWeUp::WebCfgFeatures(PageEntry_t &p, PageContext_t &c)
     climit, 4, climit, 1,
     "<p>Set charge current limit in vehicle (may be reduced further by charging equipment!)</p>");
 
-/*  c.input_slider("Power limit", "ctp_maxpower", 3, "kW",
-    -1, nmap["ctp.maxpower"].empty() ? 0 : std::stof(nmap["ctp.maxpower"]),
-    0, 0, 30, 0.1,
-    "<p>Used while not charging, default 0 = unlimited (except by car).</p>"
-    "<p>Note: this needs to be the power level at the battery, i.e. after losses.</p>"
-    "<p>Typical values: 6.5 kW for 2-phase charging, 3.2 kW for 1-phase, 2 kW for ICCB/Schuko.</p>");
-*/
   c.input_radiobtn_start("Charge limit mode", "chg_autostop");
   c.input_radiobtn_option("chg_autostop", "Notify", "no", nmap["chg_autostop"] == "no");
   c.input_radiobtn_option("chg_autostop", "Stop", "yes", nmap["chg_autostop"] == "yes");
@@ -227,6 +228,15 @@ void OvmsVehicleVWeUp::WebCfgFeatures(PageEntry_t &p, PageContext_t &c)
     "Without this feature, charge control may not work reliably.</p>"
     );
 
+  c.fieldset_end();
+
+  c.fieldset_start("Charge Time Prediction");
+  c.input_slider("Standard power level", "ctp_maxpower", 3, "kW",
+    -1, nmap["ctp.maxpower"].empty() ? 0 : std::stof(nmap["ctp.maxpower"]),
+    0, 0, 30, 0.1,
+    "<p>Used to estimate charge times while not charging, default 0 = unlimited (except by car).</p>"
+    "<p>Note: this needs to be the power level at the battery, i.e. after losses.</p>"
+    "<p>Typical values: 6.5 kW for 2-phase charging, 3.2 kW for 1-phase, 2 kW for ICCB/Schuko.</p>");
   c.fieldset_end();
 
   c.fieldset_start("Battery Health", "needs-con-obd");
@@ -290,6 +300,7 @@ void OvmsVehicleVWeUp::WebCfgFeatures(PageEntry_t &p, PageContext_t &c)
  */
 void OvmsVehicleVWeUp::WebCfgClimate(PageEntry_t &p, PageContext_t &c)
 {
+  auto lock = MyConfig.Lock();
   std::string error;
   std::string cc_temp;
   ConfigParamMap pmap = MyConfig.GetParamMap("xvu");
@@ -636,6 +647,274 @@ void OvmsVehicleVWeUp::WebDispChgMetrics(PageEntry_t &p, PageContext_t &c)
         "</div>" // receiver
       "</div>" // panel-body
     "</div>" // panel
+  );
+
+  PAGE_HOOK("body.post");
+  c.done();
+}
+
+
+/**
+ * WebPlugin to display battery health (SOH)
+ */
+void OvmsVehicleVWeUp::WebDispBattHealth(PageEntry_t &p, PageContext_t &c)
+{
+  int vweup_modelyear = MyConfig.GetParamValueInt("xvu", "modelyear", DEFAULT_MODEL_YEAR);
+  
+  c.head(200);
+  PAGE_HOOK("body.pre");
+
+  c.printf(
+    "<div class=\"panel panel-primary\">\n"
+      "<div class=\"panel-heading\">Battery Health</div>\n"
+      "<div class=\"panel-body\">\n"
+        "<div class=\"receiver\" id=\"receiver-battsoh\">\n"
+          "<table class=\"table table-bordered table-condensed\">\n"
+            "<tbody>\n"
+              "<tr>\n"
+                "<th>SOH</th>\n"
+                "<td>\n"
+                "<div class=\"metric number\" data-prec=\"1\" data-metric=\"xvu.b.soh.vw\">\n"
+                  "<span class=\"label\">Official VW</span>\n"
+                  "<span class=\"value\">0.0</span>\n"
+                  "<span class=\"unit\">%%</span>\n"
+                "</div>\n"
+                "<div class=\"metric number\" data-prec=\"1\" data-metric=\"xvu.b.soh.charge\">\n"
+                  "<span class=\"label\">Charge capacity</span>\n"
+                  "<span class=\"value\">0.0</span>\n"
+                  "<span class=\"unit\">%%</span>\n"
+                "</div>\n"
+                "<div class=\"metric number\" data-prec=\"1\" data-metric=\"xvu.b.soh.range\">\n"
+                  "<span class=\"label\">Range estimation</span>\n"
+                  "<span class=\"value\">0.0</span>\n"
+                  "<span class=\"unit\">%%</span>\n"
+                "</div>\n"
+                "</td>\n"
+              "</tr>\n"
+              "<tr>\n"
+                "<th>Ah</th>\n"
+                "<td>\n"
+                "<div class=\"metric number\" data-prec=\"1\" data-metric=\"v.b.cac\">\n"
+                  "<span class=\"label\">Net capacity</span>\n"
+                  "<span class=\"value\">0.0</span>\n"
+                  "<span class=\"unit\">Ah</span>\n"
+                "</div>\n"
+                "<div class=\"metric number\" data-prec=\"1\" data-metric=\"v.b.coulomb.recd.total\">\n"
+                  "<span class=\"label\">Charged total</span>\n"
+                  "<span class=\"value\">0.0</span>\n"
+                  "<span class=\"unit\">Ah</span>\n"
+                "</div>\n"
+                "<div class=\"metric number\" data-prec=\"0\" id=\"cycles-ah\">\n"
+                  "<span class=\"label\">Charge cycles</span>\n"
+                  "<span class=\"value\">0.0</span>\n"
+                  "<span class=\"unit\"></span>\n"
+                "</div>\n"
+                "</td>\n"
+              "</tr>\n"
+              "<tr>\n"
+                "<th>kWh</th>\n"
+                "<td>\n"
+                "<div class=\"metric number\" data-prec=\"1\" data-metric=\"v.b.capacity\">\n"
+                  "<span class=\"label\">Net capacity</span>\n"
+                  "<span class=\"value\">0.0</span>\n"
+                  "<span class=\"unit\">kWh</span>\n"
+                "</div>\n"
+                "<div class=\"metric number\" data-prec=\"1\" data-metric=\"v.b.energy.recd.total\">\n"
+                  "<span class=\"label\">Charged total</span>\n"
+                  "<span class=\"value\">0.0</span>\n"
+                  "<span class=\"unit\">kWh</span>\n"
+                "</div>\n"
+                "<div class=\"metric number\" data-prec=\"0\" id=\"cycles-kwh\">\n"
+                  "<span class=\"label\">Charge cycles</span>\n"
+                  "<span class=\"value\">0.0</span>\n"
+                  "<span class=\"unit\"></span>\n"
+                "</div>\n"
+                "</td>\n"
+              "</tr>\n"
+            "</tbody>\n"
+          "</table>\n"
+          "<h4>Cell Level</h4>\n"
+          "<div class=\"metric chart\" data-metric=\"xvu.b.c.soh,xvu.b.soh.vw\" style=\"width: 100%%; max-width: 100%%; height: 45vh; min-height: 280px; margin: 0 auto\">\n"
+            "<div class=\"chart-box barchart\" id=\"cell-soh\"/>\n"
+          "</div>\n"
+          "<h4>Cell Module History</h4>\n"
+          "<div class=\"metric chart\" data-metric=\"xvu.b.hist.soh.mod.01,xvu.b.hist.soh.mod.02,xvu.b.hist.soh.mod.03,xvu.b.hist.soh.mod.04,xvu.b.hist.soh.mod.05,xvu.b.hist.soh.mod.06,xvu.b.hist.soh.mod.07,xvu.b.hist.soh.mod.08,xvu.b.hist.soh.mod.09,xvu.b.hist.soh.mod.10,xvu.b.hist.soh.mod.11,xvu.b.hist.soh.mod.12,xvu.b.hist.soh.mod.13,xvu.b.hist.soh.mod.14,xvu.b.hist.soh.mod.15,xvu.b.hist.soh.mod.16,xvu.b.hist.soh.mod.17\" style=\"width: 100%%; max-width: 100%%; height: 45vh; min-height: 280px; margin: 0 auto\">\n"
+            "<div class=\"chart-box linechart\" id=\"cmod-hist\"/>\n"
+          "</div>\n"
+          "<div>Hint: hover/long click on legend to highlight, click to toggle</div>\n"
+        "</div>\n"
+      "</div>\n"
+    "</div>\n"
+    "<style>\n"
+    ".metric.number {\n"
+      "display: flex;\n"
+      "align-items: baseline;\n"
+    "}\n"
+    ".metric.number .label {\n"
+      "min-width: 10em;\n"
+    "}\n"
+    ".metric.number .label:after {\n"
+      "content: ':';\n"
+    "}\n"
+    ".metric.number .value {\n"
+      "min-width: 5em;\n"
+    "}\n"
+    ".plot-line-packsoh {\n"
+      "stroke: #0074ff;\n"
+      "stroke-width: 2px;\n"
+    "}\n"
+    ".highcharts-series.cmod-soh-min > .highcharts-graph {\n"
+      "stroke-width: 15px;\n"
+      "opacity: 0.6;\n"
+    "}\n"
+    "</style>\n"
+    "<script>\n"
+    "(function(){\n"
+      "/* Car model properties */\n"
+      "var car = { cap_gross_ah: %.1f, cap_gross_kwh: %.1f };\n"
+      "/* Metrics derived displays */\n"
+      "$('#receiver-battsoh').on('msg:metrics', function(ev, upd) {\n"
+        "if (upd[\"v.b.coulomb.recd.total\"]) {\n"
+          "$(\"#cycles-ah .value\").text(Number(upd[\"v.b.coulomb.recd.total\"] / car.cap_gross_ah).toFixed(1));\n"
+        "}\n"
+        "if (upd[\"v.b.energy.recd.total\"]) {\n"
+          "$(\"#cycles-kwh .value\").text(Number(upd[\"v.b.energy.recd.total\"] / car.cap_gross_kwh).toFixed(1));\n"
+        "}\n"
+      "});\n"
+      "/* Init cell SOH chart */\n"
+      "$(\"#cell-soh\").chart({\n"
+        "chart: {\n"
+          "type: 'column',\n"
+          "animation: { duration: 500, easing: 'easeOutExpo' },\n"
+          "zoomType: 'xy',\n"
+          "panning: true,\n"
+          "panKey: 'ctrl',\n"
+        "},\n"
+        "title: { text: null },\n"
+        "credits: { enabled: false },\n"
+        "tooltip: {\n"
+          "enabled: true,\n"
+          "shared: true,\n"
+          "headerFormat: 'Cell #{point.key}:<br/>',\n"
+          "pointFormat: '{series.name}: <b>{point.y}</b><br/>',\n"
+          "valueSuffix: \" %%\"\n"
+        "},\n"
+        "legend: { enabled: true },\n"
+        "xAxis: {\n"
+          "categories: []\n"
+        "},\n"
+        "yAxis: [{\n"
+          "title: { text: null },\n"
+          "labels: { format: \"{value:.0f}%%\" },\n"
+          "min: 75, max: 110,\n"
+          "minTickInterval: 0.1,\n"
+          "minorTickInterval: 'auto',\n"
+        "}],\n"
+        "series: [{\n"
+          "name: 'SOH', data: [50],\n"
+          "className: 'cell-soh',\n"
+          "animation: { duration: 0 },\n"
+        "}],\n"
+        "/* Update method: */\n"
+        "onUpdate: function(update) {\n"
+          "let m_packsoh = metrics[\"xvu.b.soh.vw\"] || 100;\n"
+          "let m_cellsoh = metrics[\"xvu.b.c.soh\"] || [];\n"
+          "// Create categories (cell numbers) & rounded values:\n"
+          "let cat = [], val0 = [];\n"
+          "for (let i = 0; i < m_cellsoh.length; i++) {\n"
+            "cat.push(i+1);\n"
+            "val0.push(Number((m_cellsoh[i]||0).toFixed(1)));\n"
+          "}\n"
+          "// Update chart:\n"
+          "this.xAxis[0].setCategories(cat);\n"
+          "this.yAxis[0].removePlotLine('plot-line-packsoh');\n"
+          "this.yAxis[0].addPlotLine({ id: 'plot-line-packsoh', className: 'plot-line-packsoh', value: m_packsoh, zIndex: 3 });\n"
+          "this.series[0].setData(val0);\n"
+          "let yext = this.yAxis[0].getExtremes();\n"
+          "let ymin = Math.max(0, Math.floor((yext.dataMin-10) / 5) * 5);\n"
+          "let ymax = Math.min(110, Math.ceil((yext.dataMax+1) / 5) * 5);\n"
+          "this.yAxis[0].update({ min: ymin, max: ymax });\n"
+          "this.yAxis[0].setExtremes(ymin, ymax);\n"
+        "},\n"
+      "});\n"
+      "/* Init cell module history chart */\n"
+      "$(\"#cmod-hist\").chart({\n"
+        "chart: {\n"
+          "type: 'line',\n"
+          "animation: { duration: 500, easing: 'easeOutExpo' },\n"
+          "zoomType: 'xy',\n"
+          "panning: true,\n"
+          "panKey: 'ctrl',\n"
+        "},\n"
+        "title: { text: null },\n"
+        "credits: { enabled: false },\n"
+        "tooltip: {\n"
+          "enabled: true,\n"
+          "shared: true,\n"
+          "headerFormat: '<u>{point.key}</u>:<br/>',\n"
+          "pointFormat: '{series.name}: <b>{point.y}</b><br/>',\n"
+          "valueSuffix: \" %%\"\n"
+        "},\n"
+        "legend: { enabled: true },\n"
+        "xAxis: {\n"
+          "categories: []\n"
+        "},\n"
+        "yAxis: [{\n"
+          "title: { text: null },\n"
+          "labels: { format: \"{value:.0f}%%\" },\n"
+          "min: 75, max: 110,\n"
+          "minTickInterval: 0.1,\n"
+          "minorTickInterval: 'auto',\n"
+        "}],\n"
+        "series: [],\n"
+        "/* Update method: */\n"
+        "onUpdate: function(update) {\n"
+          "// Create module series & minimum:\n"
+          "let series = [], min = [];\n"
+          "for (let i = 1; i <= 17; i++) {\n"
+            "let modkey = Number(i).toString().padStart(2,'0');\n"
+            "let modhist = metrics[\"xvu.b.hist.soh.mod.\"+modkey] || [];\n"
+            "if (modhist.length > 0) {\n"
+              "series.push({\n"
+                "name: modkey, data: modhist,\n"
+                "className: 'cmod-soh', zIndex: i,\n"
+                "animation: { duration: 0 },\n"
+              "});\n"
+              "// prep min:\n"
+              "modhist.forEach((el,i) => { min[i] = Math.min(min[i]||200, el) });\n"
+            "}\n"
+          "}\n"
+          "// finish min:\n"
+          "if (series.length) {\n"
+            "series.unshift({\n"
+              "name: \"Min\", data: min,\n"
+              "className: 'cmod-soh-min', zIndex: 100,\n"
+              "animation: { duration: 0 },\n"
+            "});\n"
+          "}\n"
+          "// Create categories (cell numbers) & rounded values:\n"
+          "let date = new Date();\n"
+          "let cat = [];\n"
+          "for (let i = min.length-1; i >= 0; i--) {\n"
+            "cat[i] = date.toISOString().substr(0,7);\n"
+            "date.setMonth(date.getMonth() - 3);\n"
+          "}\n"
+          "// Update chart:\n"
+          "this.xAxis[0].setCategories(cat);\n"
+          "this.update({ \"series\": series }, true, true);\n"
+          "let yext = this.yAxis[0].getExtremes();\n"
+          "let ymin = Math.max(0, Math.floor((yext.dataMin-10) / 5) * 5);\n"
+          "let ymax = Math.min(110, Math.ceil((yext.dataMax+1) / 5) * 5);\n"
+          "this.yAxis[0].update({ min: ymin, max: ymax });\n"
+          "this.yAxis[0].setExtremes(ymin, ymax);\n"
+        "},\n"
+      "});\n"
+    "})();\n"
+    "</script>\n"
+    ,
+    /* Car model properties */
+    /* cap_gross_ah: */     (vweup_modelyear > 2019) ? 120.0 : 50.0,
+    /* cap_gross_kwh: */    (vweup_modelyear > 2019) ? 36.8 : 18.7
   );
 
   PAGE_HOOK("body.post");

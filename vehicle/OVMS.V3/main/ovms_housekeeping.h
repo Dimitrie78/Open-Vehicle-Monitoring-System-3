@@ -47,6 +47,10 @@ class Housekeeping
     void Init(std::string event, void* data);
     void Metrics(std::string event, void* data);
     void TimeLogger(std::string event, void* data);
+    void HeapLogger(const char* checkpoint);
+#ifdef CONFIG_OVMS_COMP_ADC
+    void ConfigChanged(std::string event, void* data);
+#endif
 
   protected:
     TimerHandle_t m_timer1;

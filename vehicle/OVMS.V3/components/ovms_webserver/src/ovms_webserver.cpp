@@ -68,8 +68,11 @@ OvmsWebServer::OvmsWebServer()
 
   m_client_cnt = 0;
   m_client_mutex = xSemaphoreCreateMutex();
+  m_client_txqueuesize = 50;
   m_client_backlog = xQueueCreate(50, sizeof(WebSocketTxTodo));
   m_update_ticker = xTimerCreate("Web client update ticker", 250 / portTICK_PERIOD_MS, pdTRUE, NULL, UpdateTicker);
+
+  m_tick = 0;
 
   MyConfig.RegisterParam("http.server", "Webserver configuration", true, true);
   MyConfig.RegisterParam("http.plugin", "Webserver plugins", true, true);
@@ -116,7 +119,7 @@ OvmsWebServer::OvmsWebServer()
   RegisterPage("/cfg/vehicle", "Vehicle", HandleCfgVehicle, PageMenu_Config, PageAuth_Cookie);
   RegisterPage("/cfg/wifi", "Wifi", HandleCfgWifi, PageMenu_Config, PageAuth_Cookie);
 #ifdef CONFIG_OVMS_COMP_CELLULAR
-  RegisterPage("/cfg/cellular", "Cellular", HandleCfgModem, PageMenu_Config, PageAuth_Cookie);
+  RegisterPage("/cfg/cellular", "Cellular / GPS", HandleCfgModem, PageMenu_Config, PageAuth_Cookie);    
 #endif
 #ifdef CONFIG_OVMS_COMP_SERVER
 #ifdef CONFIG_OVMS_COMP_SERVER_V2
@@ -214,10 +217,10 @@ void OvmsWebServer::ConfigChanged(std::string event, void* data)
   }
 #endif
 
-#if MG_ENABLE_FILESYSTEM
   if (!param || param->GetName() == "http.server") {
     // Instances:
     //    Name                Default                 Function
+    //    ws.txqueuesize      50                      Size of WebSocket TX job queue (metrics, events, logs, …)
     //    enable.files        yes                     Enable file serving from docroot
     //    enable.dirlist      yes                     Enable directory listings
     //    docroot             /sd                     File server document root
@@ -225,6 +228,10 @@ void OvmsWebServer::ConfigChanged(std::string event, void* data)
     //    auth.file           .htpasswd               Per directory auth file (Note: no inheritance from parent dir!)
     //    auth.global         yes                     Use global auth for files (user "admin", module password)
 
+    m_client_txqueuesize =
+      MyConfig.GetParamValueInt("http.server", "ws.txqueuesize", 50);
+
+#if MG_ENABLE_FILESYSTEM
     if (m_file_opts.document_root)
       free((void*)m_file_opts.document_root);
     if (m_file_opts.auth_domain)
@@ -245,8 +252,10 @@ void OvmsWebServer::ConfigChanged(std::string event, void* data)
       strdup(MyConfig.GetParamValue("http.server", "auth.file", ".htpasswd").c_str());
     m_file_opts.global_auth_file =
       MyConfig.GetParamValueBool("http.server", "auth.global", true) ? OVMS_GLOBAL_AUTH_FILE : NULL;
+#endif //MG_ENABLE_FILESYSTEM
   }
 
+#if MG_ENABLE_FILESYSTEM
   if (!param || param->GetName() == "password") {
     UpdateGlobalAuthFile();
   }
@@ -412,6 +421,7 @@ void PagePluginContent::LoadContent()
 
 void OvmsWebServer::RegisterPlugins()
 {
+  auto lock = MyConfig.Lock();
   OvmsConfigParam* cp = MyConfig.CachedParam("http.plugin");
   if (!cp)
     return;
