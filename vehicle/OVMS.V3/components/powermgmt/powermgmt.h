@@ -43,6 +43,7 @@
 #define POWERMGMT_MODEMOFF_DELAY      96 // hours
 #define POWERMGMT_WIFIOFF_DELAY       24 // hours
 #define POWERMGMT_12V_SHUTDOWN_DELAY  30 // minutes
+#define POWERMGMT_NONETWORK_DELAY     30 // minutes
 
 class powermgmt
   {
@@ -64,6 +65,10 @@ class powermgmt
     unsigned int m_12v_shutdown_delay;
     bool m_charging;
     bool m_modem_off, m_wifi_off;
+    
+    bool m_nonetwork;
+    unsigned int m_nonetwork_timer;
+    unsigned int m_nonetwork_delay;
 
 #ifdef CONFIG_OVMS_COMP_WEBSERVER
   // --------------------------------------------------------------------------

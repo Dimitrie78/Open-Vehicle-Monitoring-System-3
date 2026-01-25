@@ -54,6 +54,9 @@ powermgmt::powermgmt()
   m_charging = false;
   m_modem_off = false;
   m_wifi_off = false;
+  m_nonetwork = false;
+  m_nonetwork_timer = 0;
+  m_nonetwork_delay = 0;
 
   MyConfig.RegisterParam("power", "Power management", true, true);
   ConfigChanged("config.mounted", NULL);
@@ -81,6 +84,8 @@ void powermgmt::ConfigChanged(std::string event, void* data)
     m_modemoff_delay = MyConfig.GetParamValueInt("power", "modemoff_delay", POWERMGMT_MODEMOFF_DELAY);
     m_wifioff_delay = MyConfig.GetParamValueInt("power", "wifioff_delay", POWERMGMT_WIFIOFF_DELAY);
     m_12v_shutdown_delay = MyConfig.GetParamValueInt("power", "12v_shutdown_delay", POWERMGMT_12V_SHUTDOWN_DELAY);
+    m_nonetwork = MyConfig.GetParamValueBool("power", "nonetwork", false);
+    m_nonetwork_delay = MyConfig.GetParamValueInt("power", "nonetwork_delay", POWERMGMT_NONETWORK_DELAY);
     }
   }
 
@@ -162,7 +167,7 @@ void powermgmt::Ticker1(std::string event, void* data)
       }
     if (m_12v_shutdown_delay && m_12v_alert_timer > m_12v_shutdown_delay*60) // minutes to seconds
       {
-      m_12v_shutdown_delay = 0;
+      m_12v_alert_timer = 0;
       ESP_LOGE(TAG,"Ongoing 12V battery alert time limit exceeded! Shutting down OVMS..");
       MyEvents.SignalEvent("powermgmt.ovms.shutdown",NULL);
       
@@ -185,4 +190,26 @@ void powermgmt::Ticker1(std::string event, void* data)
       }
     m_12v_alert_timer = 0;
     }
+    
+    if (!StandardMetrics.ms_s_v2_connected->AsBool() && m_nonetwork)
+      {
+      m_nonetwork_timer++;
+      if (m_nonetwork_delay && m_nonetwork_timer > m_nonetwork_delay*60) // minutes to seconds
+        {
+        m_nonetwork_timer = 0;
+        ESP_LOGE(TAG,"No internet connection, time limit exceeded! Shutting down OVMS..");
+        MyEvents.SignalEvent("powermgmt.ovms.shutdown",NULL);
+        
+        // Override default boot voltage level configuration:
+        MyBoot.SetMin12VLevel(12.9);
+        
+        // Request deep sleep shutdown:
+        unsigned int wakeup_interval = MyConfig.GetParamValueInt("vehicle", "12v.wakeup_interval", 60);
+        MyBoot.DeepSleep(wakeup_interval);
+        }
+      }
+    else
+      {
+      m_nonetwork_timer = 0;
+      }
   }

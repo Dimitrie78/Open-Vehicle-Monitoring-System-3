@@ -58,18 +58,20 @@ void powermgmt::WebCleanup()
   {
   auto lock = MyConfig.Lock();
   std::string error;
-  bool enabled;
-  std::string modemoff_delay, wifioff_delay, b12v_shutdown_delay;
+  bool enabled, nonetwork;
+  std::string modemoff_delay, wifioff_delay, b12v_shutdown_delay, nonetwork_delay;
 
   if (c.method == "POST")
     {
     // process form submission:
     enabled = (c.getvar("enabled") == "yes");
+    nonetwork = (c.getvar("nonetwork") == "yes");
 #ifdef CONFIG_OVMS_COMP_CELLULAR
     modemoff_delay = c.getvar("modemoff_delay");
 #endif
     wifioff_delay = c.getvar("wifioff_delay");
     b12v_shutdown_delay = c.getvar("12v_shutdown_delay");
+    nonetwork_delay = c.getvar("nonetwork_delay");
 
     // check values
     if (!modemoff_delay.empty())
@@ -82,6 +84,9 @@ void powermgmt::WebCleanup()
 
       if (b12v_shutdown_delay.find_first_not_of("0123456789") != std::string::npos)
         error += "<li data-input=\"user_key\">Invalid shutdown delay!</li>";
+
+      if (nonetwork_delay.find_first_not_of("0123456789") != std::string::npos)
+        error += "<li data-input=\"user_key\">Invalid ne network delay!</li>";
       }
 
 
@@ -89,11 +94,13 @@ void powermgmt::WebCleanup()
       {
       // store:
       MyConfig.SetParamValueBool("power", "enabled", enabled);
+      MyConfig.SetParamValueBool("power", "nonetwork", nonetwork);
 #ifdef CONFIG_OVMS_COMP_CELLULAR
       MyConfig.SetParamValue("power", "modemoff_delay", modemoff_delay);
 #endif
       MyConfig.SetParamValue("power", "wifioff_delay", wifioff_delay);
       MyConfig.SetParamValue("power", "12v_shutdown_delay", b12v_shutdown_delay);
+      MyConfig.SetParamValue("power", "nonetwork_delay", nonetwork_delay);
 
       c.head(200);
       c.alert("success", "<p class=\"lead\">Power management configuration saved.</p>");
@@ -111,11 +118,13 @@ void powermgmt::WebCleanup()
     {
     // read configuration:
     enabled = MyConfig.GetParamValueBool("power", "enabled", false);
+    nonetwork = MyConfig.GetParamValueBool("power", "nonetwork", false);
 #ifdef CONFIG_OVMS_COMP_CELLULAR
     modemoff_delay = MyConfig.GetParamValue("power", "modemoff_delay", STR(POWERMGMT_MODEMOFF_DELAY));
 #endif
     wifioff_delay = MyConfig.GetParamValue("power", "wifioff_delay", STR(POWERMGMT_WIFIOFF_DELAY));
     b12v_shutdown_delay = MyConfig.GetParamValue("power", "12v_shutdown_delay", STR(POWERMGMT_12V_SHUTDOWN_DELAY));
+    nonetwork_delay = MyConfig.GetParamValue("power", "nonetwork_delay", STR(POWERMGMT_NONETWORK_DELAY));
 
     c.head(200);
     }
@@ -151,6 +160,18 @@ void powermgmt::WebCleanup()
     "<p>If 12V battery is depleted under certain threshold, an alarm is set. OVMS waits this time period during which user can begin charging the batteries. "
     "If this period is exceeded without canceled alarm, OVMS will be shut down (sleep) to prevent further battery depletion.</p>"
     "<p>The module will then check the 12V level once per minute, and automatically reboot when the voltage has ben restored.</p>",
+    "min=\"0\" step=\"1\"", "minutes");
+
+  c.print("<hr>");
+  c.input_checkbox("Enable underground parking Mode", "nonetwork", nonetwork,
+    "<p>When the car is parked in an underground garage, it usually has no internet connection. "
+    "This can lead to problems with the modem, preventing the module from going online. "
+    "Since there's no internet connection anyway, we put the module into deep sleep mode.</p>");
+  c.fieldset_end();
+
+  c.input("number", "Delay before OVMS is shut down (no network)", "nonetwork_delay", nonetwork_delay.c_str(),
+    "Default: " STR(POWERMGMT_NONETWORK_DELAY) " minutes",
+    "<p>0 = disabled</p>",
     "min=\"0\" step=\"1\"", "minutes");
 
   c.print("<hr>");
