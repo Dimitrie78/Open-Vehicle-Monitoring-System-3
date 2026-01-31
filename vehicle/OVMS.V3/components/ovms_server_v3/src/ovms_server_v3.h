@@ -38,14 +38,13 @@
 #include "ovms_metrics.h"
 #include "ovms_notify.h"
 #include "ovms_config.h"
-#include "ovms_mutex.h"
 #include "id_include_exclude_filter.h"
 
 typedef std::map<std::string, uint32_t> OvmsServerV3ClientMap;
 
 #define MQTT_CONN_NTOPICS 4   // active, command, request/metric, request/config
 
-class OvmsServerV3 : public OvmsServer
+class OvmsServerV3 : public OvmsServer, MongooseClient
   {
   public:
     OvmsServerV3(const char* name);
@@ -94,11 +93,10 @@ class OvmsServerV3 : public OvmsServer
     std::string m_will_topic;
     std::string m_conn_topic[MQTT_CONN_NTOPICS];
     struct mg_connection *m_mgconn;
-    OvmsMutex m_mgconn_mutex;
     int m_connretry;
     int m_connection_counter;
     bool m_sendall;
-    int m_msgid;
+    uint16_t m_msgid;
     int64_t m_lasttx;
     int64_t m_lasttx_sendall;
     int64_t m_lasttx_priority;
@@ -132,6 +130,7 @@ class OvmsServerV3 : public OvmsServer
     virtual void SetPowerMode(PowerMode powermode);
     void Connect();
     void Disconnect();
+    uint16_t NextMsgId();
     void TransmitAllMetrics();
     void TransmitModifiedMetrics();
     void TransmitPriorityMetrics();
@@ -144,7 +143,7 @@ class OvmsServerV3 : public OvmsServer
     void TransmitPendingNotificationsAlert();
     void TransmitPendingNotificationsData();
     void IncomingMsg(std::string topic, std::string payload);
-    void IncomingPubRec(int id);
+    void IncomingPubRec(uint16_t id);
     void IncomingEvent(std::string event, void* data);
     void RunCommand(std::string client, std::string id, std::string command);
     void AddClient(std::string id);

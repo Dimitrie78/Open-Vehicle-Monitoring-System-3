@@ -968,7 +968,7 @@ static void MongooseRawTask(void *pvParameters)
 
 void OvmsNetManager::MongooseTask()
   {
-  int pri, lastpri = CONFIG_OVMS_NETMAN_TASK_PRIORITY;
+  int pri, basepri = CONFIG_OVMS_NETMAN_TASK_PRIORITY;
 
   // Initialise the mongoose manager
   ESP_LOGD(TAG, "MongooseTask starting");
@@ -979,10 +979,11 @@ void OvmsNetManager::MongooseTask()
   m_mongoose_running = true;
 
   // Main event loop
+  uint32_t busystart = esp_log_timestamp();
   while (!m_mongoose_stopping)
     {
     // poll interfaces:
-    if (mg_mgr_poll(&m_mongoose_mgr, 250) == 0)
+    if (mg_mgr_poll(&m_mongoose_mgr, 100) == 0)
       {
       ESP_LOGD(TAG, "MongooseTask: no interfaces available => exit");
       break;
@@ -991,12 +992,26 @@ void OvmsNetManager::MongooseTask()
     // check for netmanager control jobs:
     ProcessJobs();
 
-    // Detect broken mutex priority inheritance:
-    // (may be removed if solved by esp-idf commit 22d636b7b0d6006e06b5b3cfddfbf6e2cf69b4b8)
-    if ((pri = uxTaskPriorityGet(NULL)) != lastpri)
+    // Detect & fix broken mutex priority inheritance:
+    // (not solved by esp-idf commit 22d636b7b0d6006e06b5b3cfddfbf6e2cf69b4b8)
+    if ((pri = uxTaskPriorityGet(NULL)) != basepri)
       {
-      ESP_LOGD(TAG, "MongooseTask: priority changed from %d to %d", lastpri, pri);
-      lastpri = pri;
+      ESP_LOGD(TAG, "MongooseTask: priority changed from %d to %d, reverting", basepri, pri);
+      // revert to avoid blocking lower priority tasks:
+      vTaskPrioritySet(NULL, basepri);
+      }
+    
+    // avoid busy looping from continuous network activity:
+    // mg_mgr_poll() returns immediately if sockets were ready, so force a 10 ms yield per second
+    uint32_t now = esp_log_timestamp();
+    if (now >= busystart + 1000)
+      {
+      vTaskDelay(pdMS_TO_TICKS(10));
+      busystart = now;
+      }
+    else
+      {
+      vTaskDelay(0);
       }
     }
 
@@ -1148,6 +1163,7 @@ int OvmsNetManager::ListConnections(int verbosity, OvmsWriter* writer)
   {
   if (!MongooseRunning())
     return 0;
+  auto mglock = MongooseLock();
   mg_connection *c;
   int cnt = 0;
   char local[48], remote[48];
@@ -1168,6 +1184,7 @@ int OvmsNetManager::CloseConnection(uint32_t id)
   {
   if (!MongooseRunning())
     return 0;
+  auto mglock = MongooseLock();
   mg_connection *c;
   int cnt = 0;
   for (c = mg_next(&m_mongoose_mgr, NULL); c; c = mg_next(&m_mongoose_mgr, c))
@@ -1187,6 +1204,7 @@ int OvmsNetManager::CleanupConnections()
   {
   if (!MongooseRunning())
     return 0;
+  auto mglock = MongooseLock();
 
   mg_connection *c;
 #if ESP_IDF_VERSION_MAJOR >= 5

@@ -1,13 +1,14 @@
 /*
 ;    Project:       Open Vehicle Monitor System
-;    Date:          14th March 2017
+;    Date:          18th January 2026
 ;
 ;    Changes:
 ;    1.0  Initial release
 ;
 ;    (C) 2011       Michael Stegen / Stegen Electronics
-;    (C) 2011-2017  Mark Webb-Johnson
+;    (C) 2011-2026  Mark Webb-Johnson
 ;    (C) 2011        Sonny Chen @ EPRO/DX
+;    (C) 2026       Michael Balzer
 ;
 ; Permission is hereby granted, free of charge, to any person obtaining a copy
 ; of this software and associated documentation files (the "Software"), to deal
@@ -28,44 +29,25 @@
 ; THE SOFTWARE.
 */
 
-#ifndef __OVMS_NET_H__
-#define __OVMS_NET_H__
+#include "mongoose_client.h"
 
-#include <stdint.h>
-#include "lwip/err.h"
-#include "lwip/sockets.h"
-#include "lwip/sys.h"
-#include "lwip/netdb.h"
-#include "lwip/dns.h"
+OvmsRecMutex MongooseClient::m_mongoose_mutex __attribute__ ((init_priority (500)));
+// Note: init priority may be adjusted if needed, just needs to be lower than any sub class
 
-class OvmsNetConnection
+void MongooseClient::mg_mgr_init(struct mg_mgr *mgr, void *user_data)
   {
-  public:
-    OvmsNetConnection();
-    virtual ~OvmsNetConnection();
+  auto lock = MongooseLock();
+  ::mg_mgr_init(mgr, user_data);
+  }
 
-  public:
-    virtual bool IsOpen();
-    virtual void Disconnect();
-    virtual int Socket();
-
-  public:
-    virtual ssize_t Write(const void *buf, size_t nbyte);
-    virtual ssize_t Read(void *buf, size_t nbyte);
-
-  protected:
-    int m_sock;
-  };
-
-class OvmsNetTcpConnection : public OvmsNetConnection
+void MongooseClient::mg_mgr_free(struct mg_mgr *mgr)
   {
-  public:
-    OvmsNetTcpConnection();
-    OvmsNetTcpConnection(const char* host, const char* service);
-    virtual ~OvmsNetTcpConnection();
+  auto lock = MongooseLock();
+  ::mg_mgr_free(mgr);
+  }
 
-  public:
-    virtual bool Connect(const char* host, const char* service);
-  };
-
-#endif //#ifndef __OVMS_NET_H__
+time_t MongooseClient::mg_mgr_poll(struct mg_mgr *mgr, int milli)
+  {
+  auto lock = MongooseLock();
+  return ::mg_mgr_poll(mgr, milli);
+  }
