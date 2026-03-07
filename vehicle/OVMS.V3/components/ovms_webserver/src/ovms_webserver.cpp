@@ -72,6 +72,8 @@ OvmsWebServer::OvmsWebServer()
   m_client_backlog = xQueueCreate(50, sizeof(WebSocketTxTodo));
   m_update_ticker = xTimerCreate("Web client update ticker", 250 / portTICK_PERIOD_MS, pdTRUE, NULL, UpdateTicker);
 
+  m_tick = 0;
+
   MyConfig.RegisterParam("http.server", "Webserver configuration", true, true);
   MyConfig.RegisterParam("http.plugin", "Webserver plugins", true, true);
 
@@ -117,7 +119,7 @@ OvmsWebServer::OvmsWebServer()
   RegisterPage("/cfg/vehicle", "Vehicle", HandleCfgVehicle, PageMenu_Config, PageAuth_Cookie);
   RegisterPage("/cfg/wifi", "Wifi", HandleCfgWifi, PageMenu_Config, PageAuth_Cookie);
 #ifdef CONFIG_OVMS_COMP_CELLULAR
-  RegisterPage("/cfg/cellular", "Cellular / GPS", HandleCfgModem, PageMenu_Config, PageAuth_Cookie);
+  RegisterPage("/cfg/cellular", "Cellular / GPS", HandleCfgModem, PageMenu_Config, PageAuth_Cookie);    
 #endif
 #ifdef CONFIG_OVMS_COMP_SERVER
 #ifdef CONFIG_OVMS_COMP_SERVER_V2
@@ -158,7 +160,14 @@ void OvmsWebServer::NetManInit(std::string event, void* data)
     ConfigChanged("config.mounted", NULL);
   }
 
+  auto mglock = MongooseLock();
   struct mg_mgr* mgr = MyNetManager.GetMongooseMgr();
+  if (!mgr)
+    {
+    ESP_LOGE(TAG, "Network manager is not available");
+    m_running = false;
+    return;
+    }
 
   char *error_string;
   struct mg_bind_opts bind_opts = {};
@@ -419,6 +428,7 @@ void PagePluginContent::LoadContent()
 
 void OvmsWebServer::RegisterPlugins()
 {
+  auto lock = MyConfig.Lock();
   OvmsConfigParam* cp = MyConfig.CachedParam("http.plugin");
   if (!cp)
     return;
@@ -612,6 +622,7 @@ void OvmsWebServer::EventHandler(mg_connection *nc, int ev, void *p)
  */
 void PageEntry::Serve(PageContext_t& c)
 {
+  // Mongoose event handler context, MongooseLock not needed
   // check auth:
   if
 #if MG_ENABLE_FILESYSTEM
@@ -729,8 +740,15 @@ void MgHandler::RequestPoll()
     // we're in the NetManTask, can send directly:
     HandleEvent(MG_EV_POLL, NULL);
   } else {
+    auto mglock = MongooseLock();
+    struct mg_mgr* mgr = MyNetManager.GetMongooseMgr();
+    if (!mgr)
+      {
+      ESP_LOGE(TAG, "Network manager is not available");
+      return;
+      }
     MgHandler* origin = this;
-    mg_broadcast(MyNetManager.GetMongooseMgr(), HandlePoll, &origin, sizeof(origin));
+    mg_broadcast(mgr, HandlePoll, &origin, sizeof(origin));
   }
 #endif // MG_ENABLE_BROADCAST && WEBSRV_USE_MG_BROADCAST
 }

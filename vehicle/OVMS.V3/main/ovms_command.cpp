@@ -828,6 +828,7 @@ OvmsCommandApp::OvmsCommandApp()
   m_logfile_path = "";
   m_logfile_size = 0;
   m_logfile_maxsize = 0;
+  m_logfile_syncperiod = 3;
   m_logtask = NULL;
   m_logtask_queue = NULL;
   m_logtask_dropcnt = 0;
@@ -959,15 +960,31 @@ OvmsCommand* OvmsCommandApp::FindCommandFullName(const char* name, bool allow_cr
   return found;
   }
 
+
+/**
+ * Registry of active console instances (= log receivers)
+ */
 void OvmsCommandApp::RegisterConsole(OvmsWriter* writer)
   {
+  OvmsMutexLock consoles_lock(&m_consoles_mutex);
   m_consoles.insert(writer);
   }
 
 void OvmsCommandApp::DeregisterConsole(OvmsWriter* writer)
   {
+  OvmsMutexLock consoles_lock(&m_consoles_mutex);
   m_consoles.erase(writer);
   }
+
+
+/**
+ * OvmsCommandApp::Log: this is the central entry point for all log messages via the ESP log framework
+ *    (… called by ConsoleAsync::ConsoleLogger()
+ *     … registered by ConsoleAsync::Service() as the esp-idf log printf (via esp_log_set_vprintf()))
+ * 
+ * Log messages are stored in LogBuffers instances (shared memory pointer management),
+ *    with each listener decrementing the share count, last release freeing the log message.
+ */
 
 int OvmsCommandApp::Log(const char* fmt, ...)
   {
@@ -980,46 +997,26 @@ int OvmsCommandApp::Log(const char* fmt, ...)
 
 int OvmsCommandApp::Log(const char* fmt, va_list args)
   {
-  LogBuffers* lb;
-  TaskHandle_t task = xTaskGetCurrentTaskHandle();
-  PartialLogs::iterator it = m_partials.find(task);
-  if (it == m_partials.end())
-    lb = new LogBuffers();
-  else
-    {
-    lb = it->second;
-    m_partials.erase(task);
-    }
+  // format & store the log message:
+  LogBuffers* lb = new LogBuffers();
+  assert(lb);
   int ret = LogBuffer(lb, fmt, args);
+
+  // send the log message to all registered consoles:
+  OvmsMutexLock consoles_lock(&m_consoles_mutex);
   lb->set(m_consoles.size());
   for (ConsoleSet::iterator it = m_consoles.begin(); it != m_consoles.end(); ++it)
     {
     (*it)->Log(lb);
     }
+
   return ret;
   }
 
-int OvmsCommandApp::LogPartial(const char* fmt, ...)
-  {
-  LogBuffers* lb;
-  TaskHandle_t task = xTaskGetCurrentTaskHandle();
-  PartialLogs::iterator it = m_partials.find(task);
-  if (it == m_partials.end())
-    {
-    lb = new LogBuffers();
-    m_partials[task] = lb;
-    }
-  else
-    {
-    lb = it->second;
-    }
-  va_list args;
-  va_start(args, fmt);
-  int ret = LogBuffer(lb, fmt, args);
-  va_end(args);
-  return ret;
-  }
-
+/**
+ * OvmsCommandApp::LogBuffer: internal printf utility for Log()
+ *    (format log message & add to LogBuffers instance)
+ */
 int OvmsCommandApp::LogBuffer(LogBuffers* lb, const char* fmt, va_list args)
   {
   char *buffer;
@@ -1124,7 +1121,7 @@ void OvmsCommandApp::LogTask()
 
   // syncperiod: 0 = never, <0 = every n lines, >0 = after n/2 seconds idle
   uint32_t linecnt_synced = 0;
-  int syncperiod = MyConfig.GetParamValueInt("log", "file.syncperiod", 3);
+  int syncperiod = m_logfile_syncperiod;
   TickType_t timeout = (syncperiod<=0) ? portMAX_DELAY : pdMS_TO_TICKS(syncperiod*500);
 
   for (;;)
@@ -1238,6 +1235,8 @@ void OvmsCommandApp::LogTask()
   m_logtask = NULL;
   if (cmd.type == LogTaskCmd::LTC_Exit && cmd.data.cmdack)
     cmd.data.cmdack->Give();
+  uint32_t minstackfree = uxTaskGetStackHighWaterMark(NULL);
+  ESP_LOGD(TAG, "LogTask done, min stack free=%u", minstackfree);
   vTaskDelete(NULL);
   }
 
@@ -1527,6 +1526,8 @@ void OvmsCommandApp::ExpireTask(void* data)
   int keepdays = MyConfig.GetParamValueInt("log", "file.keepdays", 30);
   MyCommandApp.ExpireLogFiles(0, NULL, keepdays);
   MyCommandApp.m_expiretask = 0;
+  uint32_t minstackfree = uxTaskGetStackHighWaterMark(NULL);
+  ESP_LOGD(TAG, "ExpireTask done, min stack free=%u", minstackfree);
   vTaskDelete(NULL);
   }
 
@@ -1584,13 +1585,15 @@ void OvmsCommandApp::EventHandler(std::string event, void* data)
 
 void OvmsCommandApp::ReadConfig()
   {
+  auto lock = MyConfig.Lock();
   OvmsConfigParam* param = MyConfig.CachedParam("log");
+  if (!param) return;
 
   // configure log levels:
   std::string level = MyConfig.GetParamValue("log", "level");
   if (!level.empty())
     SetLoglevel("*", level);
-  for (auto const& kv : param->m_map)
+  for (auto const& kv : param->m_instances)
     {
     if (startsWith(kv.first, "level.") && !kv.second.empty())
       SetLoglevel(kv.first.substr(6), kv.second);
@@ -1598,6 +1601,7 @@ void OvmsCommandApp::ReadConfig()
 
   // configure log file:
   m_logfile_maxsize = MyConfig.GetParamValueInt("log", "file.maxsize", 1024);
+  m_logfile_syncperiod = MyConfig.GetParamValueInt("log", "file.syncperiod", 3);
   if (MyConfig.GetParamValueBool("log", "file.enable", false) == true)
     SetLogfile(MyConfig.GetParamValue("log", "file.path"));
   }

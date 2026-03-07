@@ -92,6 +92,7 @@ void OvmsVehicleSmartED::WebDeInit()
  */
 void OvmsVehicleSmartED::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
 {
+  auto lock = MyConfig.Lock();
   std::string error, info;
   bool canwrite;
   bool soc_rsoc;
@@ -282,6 +283,7 @@ void OvmsVehicleSmartED::WebCfgFeatures(PageEntry_t& p, PageContext_t& c)
  */
 void OvmsVehicleSmartED::WebCfgBattery(PageEntry_t& p, PageContext_t& c)
 {
+  auto lock = MyConfig.Lock();
   std::string error;
   //  suffsoc          	Sufficient SOC [%] (Default: 0=disabled)
   //  suffrange        	Sufficient range [km] (Default: 0=disabled)
@@ -407,6 +409,7 @@ void OvmsVehicleSmartED::WebCfgCommands(PageEntry_t& p, PageContext_t& c)
  */
 void OvmsVehicleSmartED::WebCfgNotify(PageEntry_t& p, PageContext_t& c)
 {
+  auto lock = MyConfig.Lock();
   std::string error, info;;
   bool trip;
   
@@ -446,6 +449,7 @@ void OvmsVehicleSmartED::WebCfgNotify(PageEntry_t& p, PageContext_t& c)
  */
 void OvmsVehicleSmartED::WebCfgBmsCellMonitor(PageEntry_t& p, PageContext_t& c)
 {
+  auto lock = MyConfig.Lock();
   float stemwidth_v = 0.5, stemwidth_t = 0.5;
   float
     volt_warn_def = BMS_DEFTHR_VWARN, volt_alert_def = BMS_DEFTHR_VALERT,

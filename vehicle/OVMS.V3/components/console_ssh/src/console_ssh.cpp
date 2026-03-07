@@ -218,7 +218,14 @@ void OvmsSSH::NetManInit(std::string event, void* data)
         GetErrorString(ret));
     }
 
+  auto mglock = MongooseLock();
   struct mg_mgr* mgr = MyNetManager.GetMongooseMgr();
+  if (!mgr)
+    {
+    ESP_LOGE(tag, "Network manager is not available");
+    return;
+    }
+
   mg_connection* nc = mg_bind(mgr, ":22", MongooseHandler);
   if (nc)
     nc->user_data = NULL;
@@ -328,8 +335,8 @@ ConsoleSSH::~ConsoleSSH()
   WOLFSSH* ssh = m_ssh;
   m_ssh = NULL;
   wolfSSH_free(ssh);
-  vQueueDelete(m_queue);
   m_dirs.clear();
+  // m_queue deleted by OvmsConsole::~OvmsConsole()
   }
 
 // Handle MG_EV_RECV event.
@@ -1053,12 +1060,16 @@ int ConsoleSSH::RecvCallback(char* buf, uint32_t size)
 
 int SendCallback(WOLFSSH* ssh, void* data, word32 size, void* ctx)
   {
-  mg_connection* nc = (mg_connection*)ctx;
+  mg_connection* nc = (mg_connection*) ctx;
+  if (!nc) return 0;
+  ConsoleSSH* console = (ConsoleSSH*) nc->user_data;
+  if (!console) return 0;
+  auto mglock = console->MongooseLock();
   nc->flags |= MG_F_SEND_IMMEDIATELY;
   size_t ret = mg_send(nc, (char*)data, size);
   if (ret == 0)
     {
-    if (!((ConsoleSSH*)nc->user_data)->IsDraining())
+    if (!console->IsDraining())
       {
       size_t free8 = heap_caps_get_free_size(MALLOC_CAP_8BIT|MALLOC_CAP_INTERNAL);
       ESP_LOGW(tag, "send blocked on %u-byte packet: low free memory %zu", size, free8);

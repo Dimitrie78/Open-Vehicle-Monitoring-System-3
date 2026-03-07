@@ -37,73 +37,49 @@ static const char *TAG = "v-smarteq";
 
 void OvmsVehicleSmartEQ::Ticker1(uint32_t ticker) 
   {
-  // climate start 2-3 times when Homelink 2 or 3
-  if (m_climate_ticker >= 1 && !StdMetrics.ms_v_env_hvac->AsBool() && !m_climate_start)
-      CommandClimateControl(true);
-
-  if (m_climate_start && StdMetrics.ms_v_env_hvac->AsBool()) 
-    {
-    m_climate_start = false;
-    if (m_12v_charge_state) 
-      {
-      Notify12Vcharge();
-      } 
-    else 
-      {
-      NotifyClimate();
-      }
-    if (m_climate_ticker >= 1) 
-      { 
-      --m_climate_ticker;
-      ESP_LOGI(TAG,"Climate ticker: %d", m_climate_ticker);
-      }
-    }
-
-  if (m_ddt4all_exec >= 1) 
-    { 
+  if (m_ddt4all_exec >= 1)
     --m_ddt4all_exec;
-    }
 
-  HandleCharging();
-  HandleChargeport();
+  if(StdMetrics.ms_v_charge_pilot->AsBool(false) || StdMetrics.ms_v_charge_inprogress->AsBool(false)) 
+    HandleCharging();
   
-  if (StdMetrics.ms_v_env_on->AsBool(false)) 
+  if(StdMetrics.ms_v_env_on->AsBool(false) || StdMetrics.ms_v_env_hvac->AsBool(false))
     HandleEnergy();
-  if (StdMetrics.ms_v_env_on->AsBool(false))
-    HandleTripcounter();
   
+  if(StdMetrics.ms_v_env_on->AsBool(false))
+    {
+    if(StdMetrics.ms_v_env_gear->AsInt(0) != m_gear)
+      StdMetrics.ms_v_env_gear->SetValue(m_gear);
+    }
+  }
+
+void OvmsVehicleSmartEQ::Ticker10(uint32_t ticker) 
+  {
   // reactivate door lock warning if the car is parked and unlocked
   if( m_enable_lock_state && 
         m_warning_unlocked &&
-        (StdMetrics.ms_v_door_fl->AsBool()  || 
-          StdMetrics.ms_v_door_fr->AsBool() ||
-          StdMetrics.ms_v_door_rl->AsBool() ||
-          StdMetrics.ms_v_door_rr->AsBool() ||
-          StdMetrics.ms_v_door_trunk->AsBool() ||
-          StdMetrics.ms_v_door_hood->AsBool())) 
+        DoorOpen()) 
     {
     StdMetrics.ms_v_env_parktime->SetValue(0); // reset parking time
     m_warning_unlocked = false;
     }
-  
-  if (ticker % 10 == 0) // Every 10 seconds
-    {
-    if(m_enable_LED_state) 
-      OnlineState();
-    if(m_climate_system) 
-      TimeBasedClimateData();
-    }
+
+  if(StdMetrics.ms_v_env_on->AsBool(false))
+    HandleTripcounter();
+
+  if(m_enable_LED_state) 
+    OnlineState();
   }
 
-void OvmsVehicleSmartEQ::Ticker60(uint32_t ticker) {
-  if(mt_climate_on->AsBool()) 
-    TimeCheckTask();
+void OvmsVehicleSmartEQ::Ticker60(uint32_t ticker) {  
   if(m_12v_charge && !StdMetrics.ms_v_env_on->AsBool()) 
     Check12vState();
   if(m_enable_lock_state && !m_warning_unlocked && StdMetrics.ms_v_env_parktime->AsInt() > m_park_timeout_secs +10) 
     DoorLockState();
   if(m_enable_door_state && !m_warning_dooropen && StdMetrics.ms_v_env_parktime->AsInt() > m_park_timeout_secs +10) 
     DoorOpenState();
+  if(StdMetrics.ms_v_env_on->AsBool(false)) 
+    setTPMSValue();   // update TPMS metrics
 
   #if defined(CONFIG_OVMS_COMP_WIFI) || defined(CONFIG_OVMS_COMP_CELLULAR)
     if(m_reboot_time > 0) 
@@ -130,14 +106,17 @@ void OvmsVehicleSmartEQ::Ticker60(uint32_t ticker) {
       {
       m_ADCfactor_recalc = false;
       m_ADCfactor_recalc_timer = 4;
-      // calculate new ADC factor
-      float can12V = mt_bms_12v->AsFloat(0.0f) + 0.25f;   // BMS 12V voltage + offset
-      if (can12V >= 13.10f) {
+      // calculate new ADC factor      
+      float can12V = mt_evc_dcdc->GetElemValue(1);   // DCDC voltage
+      if (StdMetrics.ms_v_env_charging12v->AsBool(false))
+        {
         ReCalcADCfactor(can12V, nullptr);  // nullptr = no Log-Output
         ESP_LOGI(TAG, "Auto ADC recalibration started (%.2fV)", can12V);
-      } else {
+        } 
+      else 
+        {
         ESP_LOGW(TAG, "Error: Auto ADC recalibration, 12V voltage is not stable for ADC calibration! (%.2fV)", can12V);
-      }
+        }
       }
     }
   #endif

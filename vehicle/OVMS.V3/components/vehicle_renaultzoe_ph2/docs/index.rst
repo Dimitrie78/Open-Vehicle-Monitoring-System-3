@@ -119,8 +119,6 @@ Additional Zoe Phase 2 Metrics
      - Zoe CAN bus running, polling enabled.
    * - **xrz2.dcdc.load***
      - Current load of dc-dc converter in percent.
-   * - **xrz2.v.e.waterpump.lifetime.left**
-     - Waterpump lifetime left counter in percent
    * - **xrz2.v.poller.inhibit**
      - If enabled by command, the poller never starts to prevent conflict with tester while maintenanace.
    * - **xrz2.v.pos.odometer.start**
@@ -138,25 +136,35 @@ Additional Zoe Phase 2 Commands
    * - Name
      - Function
    * - **xrz2 poller stop**
-     - Manually stops ISO-TP polling (for debugging). If the Zoe does not enter sleep mode, use this and report the issue.
+     - Manually stops ISO-TP polling. If the Zoe does not enter sleep mode, use this and report the issue.
    * - **xrz2 poller start**
      - Manually starts ISO-TP polling. The correct poller mode is determined by ECU status.
    * - **xrz2 poller inhibit**
-     - Disables the poller regardless of wakeup packets received or not, for vehicle maintenanace.
+     - Disables the poller regardless of wakeup packets received or not, for hiding OVMS while vehicle maintenanace.
    * - **xrz2 poller resume**
      - Enables poller for normal operation if previously inhibited.
    * - **xrz2 unlock trunk***
      - Unlocks only the trunk.
-   * - **xrz2 unlock chargeport***
-     - Open the charge port flap and if charging running it will stopped. (EXPERIMENTAL)
+   * - **xrz2 lighting***
+     - Activates headlights for approximately 30 seconds (coming home function).
+   * - **xrz2 dcdc enable***
+     - Manually activates the DC/DC converter for 12V battery charging (30 minute timeout).
+   * - **xrz2 dcdc disable***
+     - Manually deactivates the DC/DC converter.
    * - **xrz2 debug**
      - Debug output of custom functions like rolling average consumption calculation.
-   * - **xrz2 ddt***
-     - Various commands to modify configuration of ECUs connected to the V-CAN like DDT did.
+   * - **xrz2 ddt hvac compressor enable***
+     - Permanently enable the HVAC compressor (allows both cooling and heating modes).
+   * - **xrz2 ddt hvac compressor disable***
+     - Disable the HVAC compressor (PTC heating only, no cooling/heat pump).
+   * - **xrz2 ddt hvac ptc enable***
+     - Permanently enable all three PTC heating elements.
+   * - **xrz2 ddt hvac ptc disable***
+     - Reset PTC control to automatic mode.
+   * - **xrz2 ddt cluster reset service***
+     - Reset the service reminder in the instrument cluster.
 
 (* Requires V-CAN connection)
-
-DDT commands should be executed with ignition on or after ignition feed and in parked state. You can enable and disable compressor, reset service and waterpump counter.
 
 ---------------------
 OVMS Default Commands
@@ -181,8 +189,124 @@ OVMS Default Commands
      - Long pre conditioning, fires pre-climate three times in a row, about 30 mins runtime.
    * - **homelink 3***
      - Abort Long pre conditioning, it will also aborted if you unlock your Zoe.
+   * - **climatecontrol schedule ...***
+     - Global scheduler commands (``set``, ``list``, ``copy``, ``clear``, ``enable``, ``disable``) for automatic preconditioning.
 
 (* Requires V-CAN connection)
+
+-------------------------
+Scheduled Preconditioning
+-------------------------
+
+The Zoe Ph2 integration now uses the global OVMS climate scheduler.
+
+**Requirements:**
+
+- V-CAN connection enabled
+- Vehicle must be locked
+- Battery SoC must be above 15%
+- ``climatecontrol schedule`` must be enabled (either via the page or CLI)
+
+
+--------------------------------
+DDT Commands - ECU Configuration
+--------------------------------
+
+The Zoe Ph2 integration includes DDT (Diagnostic Tool) commands that allow you to modify ECU configurations directly, similar to Renault's DDT software. These commands use ISO-TP diagnostic services to change persistent settings in various ECUs.
+
+**IMPORTANT NOTES:**
+
+- DDT commands should be executed with **ignition on** (or after activating ignition feed) and in **parked state**
+- Changes are **permanent** and persist across power cycles
+- Some changes may require an ECU reset to take effect
+- Commands will retry up to 3 times if unsuccessful
+- V-CAN connection is required
+
+**HVAC Compressor Control**
+
+Enable compressor (allows cooling and heat pump heating)::
+
+  xrz2 ddt hvac compressor enable
+
+Disable compressor (PTC heating only, no cooling/heat pump)::
+
+  xrz2 ddt hvac compressor disable
+
+**Use case:** If your compressor is faulty, you can disable it to use PTC heating only during winter.
+
+**HVAC PTC Control**
+
+Enable all PTC heaters permanently::
+
+  xrz2 ddt hvac ptc enable
+
+Reset PTC control to automatic mode::
+
+  xrz2 ddt hvac ptc disable
+
+**What it does:**
+
+The Zoe has three PTC (Positive Temperature Coefficient) heating elements with different power ratings. This command sends configuration changes to the BCM (Body Control Module) to enable/disable all three PTC elements.
+
+- **Enable**: Activates all three PTC heaters for maximum heating power
+- **Disable**: Resets to automatic PTC control (HVAC decides based on temperature, the PTCs will be disabled if outside temp is above 9,5C regardless if the compressor is enabled or not)
+
+**Instrument Cluster Service Reset**
+
+Reset service reminder::
+
+  xrz2 ddt cluster reset service
+
+**Command Implementation Details:**
+
+**Example Output:**
+
+When running ``xrz2 ddt hvac compressor enable``::
+
+  Try to send HVAC compressor enable command
+  Extended session command sent successfully
+  Hot loop enable command sent successfully
+  Cold loop enable command sent successfully
+  ECU reset command sent successfully
+  Compressor enabled successfully (hot and cold loops active)
+
+If a command fails::
+
+  ERROR: Hot loop enable command failed
+  WARNING: Some compressor enable commands failed - check logs
+
+---------------------------
+Web Interface Configuration
+---------------------------
+
+The following features can be configured via the OVMS web interface under **Renault Zoe Ph2 Setup**:
+
+**Coming Home Function** 
+  When enabled, the headlights automatically turn on for ~30 seconds after locking the car if the headlights were on when the ignition was turned off. This provides lighting when leaving your car at night.
+
+  - Triggers when car is locked (via key fob, app, or OVMS command)
+  - Checks if headlights were on before driver door was opened
+  - Activates lighting for approximately 30 seconds
+
+**Remote Climate Trigger via Key Fob** 
+  When enabled, pressing the "Remote Lighting" button on your key fob triggers climate control (pre-heat/pre-cool) instead of activating the lights. This provides a convenient way to start climate control without using the app.
+
+  - Monitors HFM (Hand Free Module) commands on V-CAN
+  - Detects "Remote Lighting" button press
+  - Automatically triggers climate control function
+  - Follows all standard climate control requirements (car must be locked, SoC > 15%, etc.)
+
+**Automatic 12V Battery Recharging** 
+  When enabled, the DC/DC converter automatically activates to recharge the 12V battery when the vehicle is locked and the voltage drops below the configured threshold.
+
+  - Configurable voltage threshold (11.0V - 14.0V, default 12.4V)
+  - Activates only when vehicle is locked
+  - Automatically stops after 30 minutes
+  - Automatically stops when vehicle is unlocked
+  - Manual override available via ``xrz2 dcdc enable/disable`` commands
+
+**Scheduled Pre-Climate Configuration**
+  A dedicated web page for managing weekly preconditioning schedules is available at **Renault Zoe Ph2 → Preconditioning Schedule**.
 
 -------------------------------------------
 CAN security gateway & OBD port limitations
