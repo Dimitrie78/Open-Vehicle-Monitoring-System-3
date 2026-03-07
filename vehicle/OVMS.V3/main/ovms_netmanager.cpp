@@ -382,6 +382,8 @@ OvmsNetManager::OvmsNetManager()
   m_jobqueue = xQueueCreate(CONFIG_OVMS_HW_NETMANAGER_QUEUE_SIZE, sizeof(netman_job_t*));
 #endif //#ifdef CONFIG_OVMS_SC_GPL_MONGOOSE
 
+  m_restart_network = false;
+
   // Register our commands
   OvmsCommand* cmd_network = MyCommandApp.RegisterCommand("network","NETWORK framework",network_status, "", 0, 0, false);
   cmd_network->RegisterCommand("status","Show network status",network_status, "", 0, 0, false);
@@ -440,15 +442,27 @@ OvmsNetManager::~OvmsNetManager()
 
 void OvmsNetManager::RestartNetwork()
   {
-#ifdef CONFIG_OVMS_COMP_WIFI
-  if (MyPeripherals && MyPeripherals->m_esp32wifi)
-    MyPeripherals->m_esp32wifi->Restart();
-#endif // #ifdef CONFIG_OVMS_COMP_WIFI
+  if (MongooseRunning() && !IsNetManagerTask())
+    {
+    // signal task to do the restart:
+    ESP_LOGD(TAG, "Requesting network restart");
+    m_restart_network = true;
+    }
+  else
+    {
+    // perform restart:
+    ESP_LOGI(TAG, "Performing network restart");
+    m_restart_network = false;
+    #ifdef CONFIG_OVMS_COMP_WIFI
+      if (MyPeripherals && MyPeripherals->m_esp32wifi)
+        MyPeripherals->m_esp32wifi->Restart();
+    #endif // #ifdef CONFIG_OVMS_COMP_WIFI
 
-#ifdef CONFIG_OVMS_COMP_CELLULAR
-  if (MyPeripherals && MyPeripherals->m_cellular_modem)
-    MyPeripherals->m_cellular_modem->Restart();
-#endif // CONFIG_OVMS_COMP_CELLULAR
+    #ifdef CONFIG_OVMS_COMP_CELLULAR
+      if (MyPeripherals && MyPeripherals->m_cellular_modem)
+        MyPeripherals->m_cellular_modem->Restart();
+    #endif // CONFIG_OVMS_COMP_CELLULAR
+    }
   }
 
 #ifdef CONFIG_OVMS_COMP_WIFI
@@ -973,14 +987,14 @@ void OvmsNetManager::MongooseTask()
   // Initialise the mongoose manager
   ESP_LOGD(TAG, "MongooseTask starting");
   mg_mgr_init(&m_mongoose_mgr, NULL);
-  MyEvents.SignalEvent("network.mgr.init",NULL);
 
   m_mongoose_starting = false;
   m_mongoose_running = true;
+  MyEvents.SignalEvent("network.mgr.init",NULL);
 
   // Main event loop
   uint32_t busystart = esp_log_timestamp();
-  while (!m_mongoose_stopping)
+  while (!m_mongoose_stopping && !m_restart_network)
     {
     // poll interfaces:
     if (mg_mgr_poll(&m_mongoose_mgr, 100) == 0)
@@ -1031,6 +1045,13 @@ void OvmsNetManager::MongooseTask()
 
   // Cleanup mongoose:
   mg_mgr_free(&m_mongoose_mgr);
+  memset(&m_mongoose_mgr, 0, sizeof(m_mongoose_mgr)); // clear stale pointers
+
+  if (m_restart_network)
+    {
+    RestartNetwork();
+    }
+
   uint32_t minstackfree = uxTaskGetStackHighWaterMark(NULL);
   ESP_LOGD(TAG, "MongooseTask done, min stack free=%u", minstackfree);
   m_mongoose_task = NULL;
@@ -1039,20 +1060,20 @@ void OvmsNetManager::MongooseTask()
 
 struct mg_mgr* OvmsNetManager::GetMongooseMgr()
   {
-  return &m_mongoose_mgr;
+  return MongooseRunning() ? &m_mongoose_mgr : NULL;
   }
 
 bool OvmsNetManager::MongooseRunning()
   {
-  return m_mongoose_running && !m_mongoose_stopping;
+  return m_mongoose_running && !m_mongoose_stopping && !m_restart_network;
   }
 
 void OvmsNetManager::StartMongooseTask()
   {
-  if (m_network_any && (!m_mongoose_task || m_mongoose_stopping))
+  if (m_network_any && (!m_mongoose_task || m_mongoose_stopping || m_restart_network))
     {
     // check for previous task still shutting down:
-    if (m_mongoose_stopping && m_mongoose_task)
+    if ((m_mongoose_stopping || m_restart_network) && m_mongoose_task)
       {
       ESP_LOGD(TAG, "StartMongooseTask: waiting for task shutdown");
       // retry on next ticker.1
@@ -1062,6 +1083,7 @@ void OvmsNetManager::StartMongooseTask()
     // start new task now:
     m_mongoose_starting = false;
     m_mongoose_stopping = false;
+    m_restart_network = false;
     xTaskCreatePinnedToCore(MongooseRawTask, "OVMS NetMan",10*1024, (void*)this,
                             CONFIG_OVMS_NETMAN_TASK_PRIORITY, &m_mongoose_task, CORE(1));
     AddTaskToMap(m_mongoose_task);

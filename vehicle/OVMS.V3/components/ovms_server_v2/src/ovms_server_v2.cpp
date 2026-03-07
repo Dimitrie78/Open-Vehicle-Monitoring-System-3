@@ -762,11 +762,11 @@ void OvmsServerV2::ProcessCommand(const char* payload)
   delete buffer;
   }
 
-bool OvmsServerV2::Transmit(const std::string& message)
+bool OvmsServerV2::Transmit(const std::string& message, TickType_t timeout /*=portMAX_DELAY*/)
   {
-  auto mglock = MongooseLock();
+  auto mglock = MongooseLock(timeout);
 
-  if (!m_mgconn)
+  if (!mglock || !m_mgconn)
     return false;
 
   int len = message.length();
@@ -899,6 +899,13 @@ void OvmsServerV2::Connect()
   SetStatus("Connecting...", false, Connecting);
   auto mglock = MongooseLock();
   struct mg_mgr* mgr = MyNetManager.GetMongooseMgr();
+  if (!mgr)
+    {
+    SetStatus("Error: network manager not available", true, WaitReconnect);
+    m_connretry = 20; // Try again in 20 seconds...
+    return;
+    }
+
   struct mg_connect_opts opts;
   const char* err;
   memset(&opts, 0, sizeof(opts));
@@ -2000,7 +2007,9 @@ bool OvmsServerV2::IncomingNotification(OvmsNotifyType* type, OvmsNotifyEntry* e
     buffer
       << "MP-0 PI"
       << mp_encode(entry->GetValue());
-    return Transmit(buffer.str().c_str()); // Mark it as read if we've managed to send it
+    bool txok = Transmit(buffer.str().c_str(), 0);
+    if (!txok) m_pending_notify_info = true;
+    return txok; // Mark it as read if we've managed to send it
     }
   else if (strcmp(type->m_name,"error")==0)
     {
@@ -2014,7 +2023,9 @@ bool OvmsServerV2::IncomingNotification(OvmsNotifyType* type, OvmsNotifyEntry* e
     buffer
       << "MP-0 PE"
       << entry->GetValue(); // no mp_encode; payload structure "<vehicletype>,<errorcode>,<errordata>"
-    return Transmit(buffer.str().c_str()); // Mark it as read if we've managed to send it
+    bool txok = Transmit(buffer.str().c_str(), 0);
+    if (!txok) m_pending_notify_error = true;
+    return txok; // Mark it as read if we've managed to send it
     }
   else if (strcmp(type->m_name,"alert")==0)
     {
@@ -2028,7 +2039,9 @@ bool OvmsServerV2::IncomingNotification(OvmsNotifyType* type, OvmsNotifyEntry* e
     buffer
       << "MP-0 PA"
       << mp_encode(entry->GetValue());
-    return Transmit(buffer.str().c_str()); // Mark it as read if we've managed to send it
+    bool txok = Transmit(buffer.str().c_str(), 0);
+    if (!txok) m_pending_notify_alert = true;
+    return txok; // Mark it as read if we've managed to send it
     }
   else if (strcmp(type->m_name,"data")==0)
     {
@@ -2150,6 +2163,8 @@ void OvmsServerV2::Ticker1(std::string event, void* data)
       else if (now >= m_lastrx_time + rxtimeout)
         {
         ESP_LOGW(TAG, "Detected stale connection (issue #241), restarting network");
+        SetStatus("Restarting network", false, WaitNetwork);
+        Disconnect();
         MyNetManager.RestartNetwork();
         return;
         }
