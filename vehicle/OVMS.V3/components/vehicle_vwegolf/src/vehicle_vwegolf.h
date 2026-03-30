@@ -46,6 +46,7 @@ class OvmsVehicleVWeGolf : public OvmsVehicle {
     OvmsVehicleVWeGolf();
     ~OvmsVehicleVWeGolf();
 
+    void IncomingFrameCan2(CAN_frame_t* p_frame) override;
     void IncomingFrameCan3(CAN_frame_t* p_frame) override;
 
     vehicle_command_t CommandHorn();
@@ -73,6 +74,8 @@ class OvmsVehicleVWeGolf : public OvmsVehicle {
     bool m_unlock_requested = false;
     bool m_lock_requested = false;
     bool m_is_control_active = false;
+    uint8_t m_vin_parts_received = 0;
+    char m_vin_buf[18] = {};
 };
 
 #endif  // #ifndef __VEHICLE_VWEG_H__

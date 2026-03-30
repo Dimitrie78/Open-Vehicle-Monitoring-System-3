@@ -81,6 +81,23 @@ void OvmsVehicleSmartEQ::IncomingFrameCan1(CAN_frame_t* p_frame) {
         m_candata_poll = false;
         m_candata_timer = -1;
         }
+      int code = CAN_BYTE(0);
+      std::string msgtxt = "";
+      switch(code) {
+        case 192: msgtxt = "SLEEPING"; break; 
+        case 193: msgtxt = "TECHNICAL WAKE UP"; break;
+        case 194: msgtxt = "CUT OFF PENDING"; break;
+        case 195: msgtxt = "BAT TEMPO LEVEL"; break;
+        case 196: msgtxt = "ACCESSORY LEVEL"; break;
+        case 197: msgtxt = "IGNITION LEVEL"; break;
+        case 198: msgtxt = "STARTING IN PROGRESS"; break;
+        case 199: msgtxt = "ENGINE RUNNING"; break;
+        case 200: msgtxt = "AUTOSTART"; break;
+        case 201: msgtxt = "ENGINE SYSTEM STOP"; break;
+        default: msgtxt = "SLEEPING"; break;
+      }
+      if(msgtxt != mt_bcm_vehicle_state->AsString(""))
+        mt_bcm_vehicle_state->SetValue(msgtxt);
       break;
       }
     case 0x392:
@@ -207,6 +224,14 @@ void OvmsVehicleSmartEQ::IncomingFrameCan1(CAN_frame_t* p_frame) {
         }
       break;
       }
+    case 0x656:
+      {
+      REQ_DLC(6);
+      float _env_temp = (float) CAN_BYTE(6) - 40.0f;
+      if (_env_temp > -40.0f && _env_temp < 85.0f)
+        StdMetrics.ms_v_env_temp->SetValue(_env_temp);
+      break;
+      }
     case 0x658:
       {
       REQ_DLC(6);
@@ -237,7 +262,7 @@ void OvmsVehicleSmartEQ::IncomingFrameCan1(CAN_frame_t* p_frame) {
       break;
     case 0x673:  
       // TPMS pressure values only used, when CAN write is disabled, otherwise utilize PollReply_TPMS_InputCapt
-      if (!m_enable_write)
+      if ((!m_enable_write && !m_enable_write_caron) || !m_obdii_745_tpms)
       {
         REQ_DLC(6);
         // Read TPMS pressure values:
@@ -246,7 +271,12 @@ void OvmsVehicleSmartEQ::IncomingFrameCan1(CAN_frame_t* p_frame) {
           if (CAN_BYTE(2 + i) != 0xff) 
             {
             m_tpms_pressure[3-i] = (float) CAN_BYTE(2 + i) * 3.1;  // kPa, counter m_tpms_pressure indexing FL=3, FR=2, RL=1, RR=0
-          }
+            if (m_tpms_temp_enable)
+              {
+              // Dummy value to indicate valid temp reading, actual temp value is not available in this frame, but can be read via PollReply_TPMS_InputCapt when CAN write is enabled
+              m_tpms_temperature[i] = 1.1f;
+              }
+            }
         }
       }
       break;

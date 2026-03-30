@@ -388,16 +388,16 @@ void OvmsVehicleSmartEQ::ReCalcADCfactor(float can12V, OvmsWriter* writer) {
 }
 
 void OvmsVehicleSmartEQ::DoorLockState() {
-  bool warning_unlocked = (StdMetrics.ms_v_env_parktime->AsInt() > m_park_timeout_secs &&
-                          !StdMetrics.ms_v_env_on->AsBool() &&
-                          !StdMetrics.ms_v_env_locked->AsBool() &&
+  bool warning_unlocked = (StdMetrics.ms_v_env_parktime->AsInt(0) > m_park_timeout_secs &&
+                          !IsOnEQ() &&
+                          !StdMetrics.ms_v_env_locked->AsBool(false) &&
                           !m_warning_unlocked);
   
   if (warning_unlocked) {
       m_warning_unlocked = true;
       ESP_LOGI(TAG, "Warning: Vehicle is unlocked and parked for more than 10 minutes");
       MyNotify.NotifyString("alert", "vehicle.unlocked", "The vehicle is unlocked and parked for more than 10 minutes.");
-  } else if (StdMetrics.ms_v_env_parktime->AsInt() > m_park_timeout_secs +10 && !warning_unlocked){
+  } else if (StdMetrics.ms_v_env_parktime->AsInt(0) > m_park_timeout_secs +10 && !warning_unlocked){
       m_warning_unlocked = true; // prevent warning if the vehicle is parked locked for more than 10 minutes
   }
 }
@@ -469,12 +469,39 @@ void OvmsVehicleSmartEQ::smartOn()
   m_climate_restart_ticker = 0;
   // reset idle ticker when vehicle turned on to prevent trigger every 60 sec.
   m_idle_ticker = 15 * 60;
+  // canwrite enable write access, only when car is on
+  if(m_enable_write || m_enable_write_caron) 
+    {
+    smartCANmode(true);
+    }
+  ESP_LOGD(TAG, "smartOn()");
 }
 
 void OvmsVehicleSmartEQ::smartOff()
 {
   // Reset gear
   StdMetrics.ms_v_env_gear->SetValue(0);
+}
+
+void OvmsVehicleSmartEQ::smartAwake()
+{
+  // enable active polling when car wakes up (canwrite only)
+  mt_bus_awake->SetValue(true);
+  if(m_enable_write) 
+    {
+    smartCANmode(true);
+    }
+  else if (m_enable_write_caron && m_can_active)
+    {
+    smartCANmode(false);
+    }
+}
+
+void OvmsVehicleSmartEQ::smartSleep()
+{
+  // disable active polling when car goes to sleep
+  smartCANmode(false);
+  ESP_LOGD(TAG, "smartSleep()");
 }
 
 void OvmsVehicleSmartEQ::smartChargeStart()
@@ -493,6 +520,13 @@ void OvmsVehicleSmartEQ::smartChargeStart()
     m_ADCfactor_recalc_timer = 4;   // wait at least 4 min. before recalculation
     m_ADCfactor_recalc = true;      // recalculate ADC factor when HV charging
     }
+  // canwrite enable write access, only when car is on
+  if(m_enable_write || m_enable_write_caron) 
+    {
+    m_poll_on_charge = true;
+    smartCANmode(true);
+    }
+  ESP_LOGD(TAG, "smartChargeStart()");
 }
 
 void OvmsVehicleSmartEQ::smartChargeStop()
@@ -521,18 +555,60 @@ void OvmsVehicleSmartEQ::smartChargeStop()
   // stop recalculation when HV charging stopped
   m_ADCfactor_recalc_timer = 0;
   m_ADCfactor_recalc = false;
+  ESP_LOGD(TAG, "smartChargeStop()");
 }
 
 void OvmsVehicleSmartEQ::smartChargePrepare()
 {
   if (m_charge_finished) ResetChargingValues();
   if (m_resettrip) ResetTripCounters();
+  // canwrite enable write access, only when car is on
+  if(m_enable_write || m_enable_write_caron) 
+    {
+    m_poll_on_charge = true;
+    smartCANmode(true);
+    }
+  ESP_LOGD(TAG, "smartChargePrepare()");
 }
 
 void OvmsVehicleSmartEQ::smartChargeFinish()
 {
   m_charge_finished = true;
   StdMetrics.ms_v_charge_power->SetValue(0);
+  m_poll_on_charge = false;
+  ESP_LOGD(TAG, "smartChargeFinish()");
+}
+
+void OvmsVehicleSmartEQ::smartCANmode(bool activate)
+{
+  if(!m_enable_write && !m_enable_write_caron)
+    {
+    m_can1->Stop();
+    vTaskDelay(200 / portTICK_PERIOD_MS);
+    m_can1->Start(CAN_MODE_LISTEN, CAN_SPEED_500KBPS);
+    PollSetPidList(m_can1, NULL);
+    m_can_active = false;
+    m_poll_on_charge = false;
+    ESP_LOGD(TAG, "smartCANmode(): CAN bus switched to listen mode");
+    return;
+    }
+  
+  // switch CAN bus to active/listen mode
+  m_can1->Stop();
+  vTaskDelay(200 / portTICK_PERIOD_MS);
+  CAN_mode_t mode = activate ? CAN_MODE_ACTIVE : CAN_MODE_LISTEN;
+  RegisterCanBus(1, mode, CAN_SPEED_500KBPS);
+  m_can_active = activate;
+  m_poll_on_charge = m_poll_state == POLLSTATE_CHARGING ? true : false;
+  if (activate)
+    {
+    ESP_LOGD(TAG, "smartCANmode(): CAN bus switched to active mode for write access");
+    }
+  if (!activate)
+    {
+    ESP_LOGD(TAG, "smartCANmode(): CAN bus switched to listen mode");
+    }
+  HandleOBDpolling();
 }
 
 /**
