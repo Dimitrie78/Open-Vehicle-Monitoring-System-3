@@ -555,6 +555,7 @@ class OvmsWebServer : public ExternalRamAllocated, MongooseClient
     static void HandleFile(PageEntry_t& p, PageContext_t& c);
     static void HandleShell(PageEntry_t& p, PageContext_t& c);
     static void HandleDashboard(PageEntry_t& p, PageContext_t& c);
+    static void HandleMetrics(PageEntry_t& p, PageContext_t& c);
     static void HandleBmsCellMonitor(PageEntry_t& p, PageContext_t& c);
     static void HandleCfgBrakelight(PageEntry_t& p, PageContext_t& c);
     static void HandleEditor(PageEntry_t& p, PageContext_t& c);
@@ -576,6 +577,7 @@ class OvmsWebServer : public ExternalRamAllocated, MongooseClient
       std::string& warn, std::string& error, int pass_minlen);
     static void HandleCfgAutoInit(PageEntry_t& p, PageContext_t& c);
     static void HandleCfgFirmware(PageEntry_t& p, PageContext_t& c);
+    static void HandleCfgPartitioning(PageEntry_t& p, PageContext_t& c);
     static void HandleCfgLogging(PageEntry_t& p, PageContext_t& c);
     static void HandleCfgLocations(PageEntry_t& p, PageContext_t& c);
     static void HandleCfgBackup(PageEntry_t& p, PageContext_t& c);

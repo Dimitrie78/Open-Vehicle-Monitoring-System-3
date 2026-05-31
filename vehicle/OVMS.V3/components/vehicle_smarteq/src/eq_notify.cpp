@@ -41,14 +41,7 @@ void OvmsVehicleSmartEQ::xsq_trip_start(int verbosity, OvmsWriter* writer, OvmsC
 }
 
 OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::CommandTripStart(int verbosity, OvmsWriter* writer) {
-    metric_unit_t rangeUnit = (MyConfig.GetParamValue("vehicle", "units.distance") == "M") ? Miles : Kilometers;
-    writer->puts("Trip start values:");
-    writer->printf("  distance: %s\n", (char*) mt_start_distance->AsUnitString("-", rangeUnit, 1).c_str());
-    writer->printf("  time: %s\n", (char*) mt_start_time->AsUnitString("-", Native, 1).c_str());
-    writer->printf("  SOC: %s\n", (char*) StdMetrics.ms_v_bat_soc->AsUnitString("-", Native, 1).c_str());
-    writer->printf("  CAP: %s\n", (char*) StdMetrics.ms_v_bat_capacity->AsUnitString("-", Native, 1).c_str());
-    writer->printf("  SOH: %s %s\n", StdMetrics.ms_v_bat_soh->AsUnitString("-", ToUser, 0).c_str(), StdMetrics.ms_v_bat_health->AsUnitString("-", ToUser, 0).c_str());
-    return Success;
+    return CommandTripCounters(verbosity, writer, "Trip start values:");
 }
 void OvmsVehicleSmartEQ::NotifyTripStart() {
   StringWriter buf(200);
@@ -64,14 +57,7 @@ void OvmsVehicleSmartEQ::xsq_trip_reset(int verbosity, OvmsWriter* writer, OvmsC
   smarteq->CommandTripReset(verbosity, writer);
 }
 OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::CommandTripReset(int verbosity, OvmsWriter* writer) {
-    metric_unit_t rangeUnit = (MyConfig.GetParamValue("vehicle", "units.distance") == "M") ? Miles : Kilometers;
-    writer->puts("Trip reset values:");
-    writer->printf("  distance: %s\n", (char*) mt_start_distance->AsUnitString("-", rangeUnit, 1).c_str());
-    writer->printf("  time: %s\n", (char*) mt_start_time->AsUnitString("-", Native, 1).c_str());
-    writer->printf("  SOC: %s\n", (char*) StdMetrics.ms_v_bat_soc->AsUnitString("-", Native, 1).c_str());
-    writer->printf("  CAP: %s\n", (char*) StdMetrics.ms_v_bat_capacity->AsUnitString("-", Native, 1).c_str());
-    writer->printf("  SOH: %s %s\n", StdMetrics.ms_v_bat_soh->AsUnitString("-", ToUser, 0).c_str(), StdMetrics.ms_v_bat_health->AsUnitString("-", ToUser, 0).c_str());
-    return Success;
+    return CommandTripCounters(verbosity, writer, "Trip reset values:");
 }
 void OvmsVehicleSmartEQ::NotifyTripReset() {
   StringWriter buf(200);
@@ -86,9 +72,9 @@ void OvmsVehicleSmartEQ::xsq_trip_counters(int verbosity, OvmsWriter* writer, Ov
 	
     smarteq->CommandTripCounters(verbosity, writer);
 }
-OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::CommandTripCounters(int verbosity, OvmsWriter* writer) {
+OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::CommandTripCounters(int verbosity, OvmsWriter* writer, const char* title) {
     metric_unit_t rangeUnit = (MyConfig.GetParamValue("vehicle", "units.distance") == "M") ? Miles : Kilometers;
-    writer->puts("Trip counter values:");
+    writer->puts(title);
     writer->printf("  distance: %s\n", (char*) StdMetrics.ms_v_pos_trip->AsUnitString("-", rangeUnit, 1).c_str());
 	  writer->printf("  Energy used: %s\n", (char*) StdMetrics.ms_v_bat_energy_used->AsUnitString("-", Native, 3).c_str());
 	  writer->printf("  Energy recd: %s\n", (char*) StdMetrics.ms_v_bat_energy_recd->AsUnitString("-", Native, 3).c_str());
@@ -96,6 +82,7 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::CommandTripCounters(int verbo
     writer->printf("  SOC: %s\n", (char*) StdMetrics.ms_v_bat_soc->AsUnitString("-", Native, 1).c_str());
     writer->printf("  CAP: %s\n", (char*) StdMetrics.ms_v_bat_capacity->AsUnitString("-", Native, 1).c_str());
     writer->printf("  SOH: %s %s\n", StdMetrics.ms_v_bat_soh->AsUnitString("-", ToUser, 0).c_str(), StdMetrics.ms_v_bat_health->AsUnitString("-", ToUser, 0).c_str());
+    writer->printf("  HV contactor consumed cycles: %d \n", mt_bms_contactor_cycles->GetElemValue(2));
     return Success;
 }
 void OvmsVehicleSmartEQ::NotifyTripCounters() {
@@ -121,6 +108,7 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::CommandTripTotal(int verbosit
     writer->printf("  SOC: %s\n", (char*) StdMetrics.ms_v_bat_soc->AsUnitString("-", Native, 1).c_str());
     writer->printf("  CAP: %s\n", (char*) StdMetrics.ms_v_bat_capacity->AsUnitString("-", Native, 1).c_str());
     writer->printf("  SOH: %s %s\n", StdMetrics.ms_v_bat_soh->AsUnitString("-", ToUser, 0).c_str(), StdMetrics.ms_v_bat_health->AsUnitString("-", ToUser, 0).c_str());
+    writer->printf("  HV contactor consumed cycles: %d \n", mt_bms_contactor_cycles->GetElemValue(2));
     return Success;
 }
 void OvmsVehicleSmartEQ::NotifyTotalCounters() {
@@ -149,9 +137,10 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::CommandMaintenance(int verbos
     writer->printf("  days: %d\n", mt_obd_mt_day_usual->AsInt());
     writer->printf("  level: %s\n", mt_obd_mt_level->AsString().c_str());
     writer->printf("  km: %d\n", mt_obd_mt_km_usual->AsInt());    
-    writer->printf("  remaining HV contactor cycles: %d / %d\n", 
+    writer->printf("  remaining HV contactor cycles: %d of %d (%d consumed)\n", 
                    mt_bms_contactor_cycles->GetElemValue(1), 
-                   mt_bms_contactor_cycles->GetElemValue(0));
+                   mt_bms_contactor_cycles->GetElemValue(0),
+                   mt_bms_contactor_cycles->GetElemValue(2));
     writer->printf("  SOH: %s %s\n", StdMetrics.ms_v_bat_soh->AsUnitString("-", ToUser, 0).c_str(), StdMetrics.ms_v_bat_health->AsUnitString("-", ToUser, 0).c_str());
     return Success;
 }
@@ -176,18 +165,55 @@ void OvmsVehicleSmartEQ::NotifySOClimit() {
 }
 
 OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::Command12Vcharge(int verbosity, OvmsWriter* writer) {
-  writer->puts("12V charge on:");
- 
+  writer->puts("12V charge on:"); 
   writer->printf("  12V: %s\n", (char*) StdMetrics.ms_v_bat_12v_voltage->AsUnitString("-", Native, 1).c_str());
   writer->printf("  SOC: %s\n", (char*) StdMetrics.ms_v_bat_soc->AsUnitString("-", Native, 1).c_str());
   writer->printf("  CAP: %s\n", (char*) StdMetrics.ms_v_bat_capacity->AsUnitString("-", Native, 1).c_str());
   writer->printf("  SOH: %s %s\n", StdMetrics.ms_v_bat_soh->AsUnitString("-", ToUser, 0).c_str(), StdMetrics.ms_v_bat_health->AsUnitString("-", ToUser, 0).c_str());
+  writer->printf("  HV contactor resumed cycles: %d \n", mt_bms_contactor_cycles->GetElemValue(2));
   return Success;
 }
 void OvmsVehicleSmartEQ::Notify12Vcharge() {
   StringWriter buf(200);
   Command12Vcharge(COMMAND_RESULT_NORMAL, &buf);
   MyNotify.NotifyString("info","xsq.12v.charge",buf.c_str());
+}
+
+void OvmsVehicleSmartEQ::xsq_hvcycles(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv) {
+  OvmsVehicleSmartEQ* smarteq = GetInstance(writer);
+  if (!smarteq)
+    return;
+  
+    smarteq->CommandHVCycles(verbosity, writer, false);
+}
+
+OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::CommandHVCycles(int verbosity, OvmsWriter* writer, bool alert) {
+  if (alert) 
+    {
+    writer->puts("HV Contactor Cycle: more than expected cycles consumed:\n");
+    }
+  else 
+    {
+    writer->puts("HV contactor cycle:\n");
+    }
+  writer->printf("  Max Cycles:              %d\n", mt_bms_contactor_cycles->GetElemValue(0));
+  writer->printf("  remaining Cycles:        %d\n", mt_bms_contactor_cycles->GetElemValue(1));
+  writer->printf("  Cycles consumed:         %d\n", mt_bms_contactor_cycles->GetElemValue(2));
+  writer->printf("  Cycles diff (last/now):  %d\n", mt_bms_contactor_cycles->GetElemValue(3));
+  if (alert)
+    writer->puts("Please check the vehicle and contact support!\n");
+  if (!alert)
+    writer->puts("Note: If you see the counted consumed cycles fast increasing, please check the vehicle and contact support if this happens repeatedly!\n");
+  if (mt_bms_contactor_cycles->GetElemValue(2) > m_above_cycles)
+    writer->printf("Warning: The counted consumed cycles are above %d which is more than expected for a healthy HV contactor - please check the vehicle and contact support if this happens repeatedly!\n", m_above_cycles);
+  return Success;
+}
+
+void OvmsVehicleSmartEQ::NotifyHVCycles(bool alert) {
+  StringWriter buf(200);
+  CommandHVCycles(COMMAND_RESULT_NORMAL, &buf, alert);
+  const char* notify_type = alert ? "alert" : "info";
+  MyNotify.NotifyString(notify_type,"xsq.hv.cycles",buf.c_str());
 }
 
 void OvmsVehicleSmartEQ::xsq_ed4scan(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv) {
@@ -213,7 +239,9 @@ OvmsVehicle::vehicle_command_t OvmsVehicleSmartEQ::CommandED4scan(int verbosity,
   writer->puts("\n--- HV Contactor Cycles (PID 0x02) ---");
   writer->printf("  Max Cycles:              %d\n", mt_bms_contactor_cycles->GetElemValue(0));
   writer->printf("  remaining Cycles:        %d\n", mt_bms_contactor_cycles->GetElemValue(1));
-  
+  writer->printf("  consumed Cycles:         %d\n", mt_bms_contactor_cycles->GetElemValue(2));
+  writer->printf("  Cycles diff (last/now):  %d\n", mt_bms_contactor_cycles->GetElemValue(3));
+
   writer->puts("\n--- SOC Kernel Data (PID 0x08) ---");
   writer->printf("  Open Circuit Voltage:    %.2f V\n", mt_bms_voltages->GetElemValue(5));
   writer->printf("  Real SOC (Min):          %.2f%%\n", mt_bms_soc_values->GetElemValue(2));

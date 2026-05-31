@@ -111,6 +111,7 @@ OvmsWebServer::OvmsWebServer()
   // register standard administration pages:
   RegisterPage("/status", "Status", HandleStatus, PageMenu_Main, PageAuth_Cookie);
   RegisterPage("/shell", "Shell", HandleShell, PageMenu_Tools, PageAuth_Cookie);
+  RegisterPage("/metrics", "Metrics", HandleMetrics, PageMenu_Tools, PageAuth_Cookie);
   RegisterPage("/edit", "Editor", HandleEditor, PageMenu_Tools, PageAuth_Cookie);
 #ifdef WEBSRV_HAVE_SETUPWIZARD
   RegisterPage("/cfg/init", "Setup wizard", HandleCfgInit, PageMenu_None, PageAuth_Cookie);
@@ -138,6 +139,7 @@ OvmsWebServer::OvmsWebServer()
   RegisterPage("/cfg/autostart", "Autostart", HandleCfgAutoInit, PageMenu_Config, PageAuth_Cookie);
 #ifdef CONFIG_OVMS_COMP_OTA
   RegisterPage("/cfg/firmware", "Firmware", HandleCfgFirmware, PageMenu_Config, PageAuth_Cookie);
+  RegisterPage("/cfg/partitioning", "Partitioning", HandleCfgPartitioning, PageMenu_Config, PageAuth_Cookie);
 #endif
   RegisterPage("/cfg/logging", "Logging", HandleCfgLogging, PageMenu_Config, PageAuth_Cookie);
   RegisterPage("/cfg/locations", "Locations", HandleCfgLocations, PageMenu_Config, PageAuth_Cookie);

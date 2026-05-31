@@ -69,6 +69,7 @@ class OvmsWriter
     virtual ssize_t write(const void *buf, size_t nbyte) { return 0; }
     virtual char** SetCompletion(int index, const char* token, bool isfinal = true) { return NULL; }
     virtual char** GetCompletions(int &common_len, bool &finished ) { return NULL; }
+    virtual void SetCommand(OvmsCommand* cmd) { return; }
     virtual void SetArgv(const char* const* argv) { return; }
     virtual const char* const* GetArgv() { return NULL; }
     virtual void Log(LogBuffers* message) {};
@@ -78,6 +79,11 @@ class OvmsWriter
     void DeregisterInsertCallback(InsertCallback cb);
     virtual void finalise() {}
     virtual void ProcessChar(char c) {}
+
+  public:
+    // Used to notify the writer of a migration of a file within the VFS
+    virtual const std::string GetPath() { return std::string(""); }
+    virtual void SetPath(const std::string& path) {}
 
   public:
     bool IsSecure();

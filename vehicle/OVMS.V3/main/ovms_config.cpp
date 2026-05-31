@@ -523,16 +523,20 @@ esp_err_t OvmsConfig::mount()
 
   auto lock = Lock();
 
-  memset(&m_store_fat,0,sizeof(esp_vfs_fat_sdmmc_mount_config_t));
+  memset(&m_store_fat,0,sizeof(m_store_fat));
   m_store_fat.format_if_mount_failed = true;
   m_store_fat.max_files = 5;
 
 #if ESP_IDF_VERSION_MAJOR >= 5
-  esp_vfs_fat_spiflash_mount_rw_wl("/store", "store", &m_store_fat, &m_store_wlh);
+  m_mounted = (esp_vfs_fat_spiflash_mount_rw_wl("/store", "store", &m_store_fat, &m_store_wlh) == ESP_OK);
 #else
-  esp_vfs_fat_spiflash_mount("/store", "store", &m_store_fat, &m_store_wlh);
+  m_mounted = (esp_vfs_fat_spiflash_mount("/store", "store", &m_store_fat, &m_store_wlh) == ESP_OK);
 #endif
-  m_mounted = true;
+
+  if (m_mounted)
+    {
+    ESP_LOGI(TAG, "Mounted /store");
+    }
 
   struct stat ds;
   if (stat(OVMS_CONFIGPATH, &ds) != 0)
@@ -993,6 +997,31 @@ bool OvmsConfig::Backup(std::string path, std::string password, OvmsWriter* writ
     writer->printf("Creating config backup '%s'...\n", path.c_str());
   else
     ESP_LOGD(TAG, "Backup: creating '%s'...", path.c_str());
+
+  // Validate/create destination directory:
+  const char *patherror = NULL;
+  auto slashpos = path.rfind('/');
+  if (slashpos != 0 && slashpos != std::string::npos)
+    {
+    std::string pathdir = path.substr(0, slashpos);
+    if (mkpath(pathdir) != 0)
+      {
+      patherror = std::strerror(errno);
+      path = pathdir;
+      }
+    }
+  else
+    {
+    patherror = "Directory missing";
+    }
+  if (patherror)
+    {
+    if (writer)
+      writer->printf("Error: backup path '%s' is invalid: %s\n", path.c_str(), patherror);
+    else
+      ESP_LOGE(TAG, "Backup: path '%s' is invalid: %s", path.c_str(), patherror);
+    return false;
+    }
 
   // Lock config cache & file storage:
   auto lock = Lock(pdMS_TO_TICKS(5000));

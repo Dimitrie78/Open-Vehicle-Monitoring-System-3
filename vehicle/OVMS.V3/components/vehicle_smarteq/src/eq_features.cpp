@@ -84,7 +84,7 @@ void OvmsVehicleSmartEQ::setTPMSValue() {
       }
     
     // Handle alert conditions only if sensor is working and alerts are enabled
-    if (!pressure_valid || !alerts_enabled)
+    if (!pressure_valid || !alerts_enabled) 
       {
       // Sensor not working or alerts disabled - clear all alerts
       _lowbatt = false;
@@ -201,7 +201,6 @@ void OvmsVehicleSmartEQ::ResetChargingValues() {
   m_charge_finished = false;
   m_notifySOClimit = false;
   StdMetrics.ms_v_charge_kwh->SetValue(0); // charged Energy
-  //StdMetrics.ms_v_charge_kwh_grid->SetValue(0);
 }
 
 void OvmsVehicleSmartEQ::ResetTripCounters() {
@@ -380,6 +379,7 @@ void OvmsVehicleSmartEQ::ReCalcADCfactor(float can12V, OvmsWriter* writer) {
       mt_adc_factor_history->SetElemValues(0, n, hist);
     mt_adc_factor->SetValue(adc_factor_new);
     MyConfig.SetParamValueFloat("system.adc", "factor12v", adc_factor_new);
+    MyConfig.SetParamValueBool("xsq", "calc.adcfactor", false);
     if (writer) writer->printf("New ADC factor stored: %.3f (prev %.3f, history size %u)\n", adc_factor_new, adc_factor_prev, (unsigned)n);
   #else
     ESP_LOGD(TAG, "ADC support not enabled");
@@ -388,16 +388,17 @@ void OvmsVehicleSmartEQ::ReCalcADCfactor(float can12V, OvmsWriter* writer) {
 }
 
 void OvmsVehicleSmartEQ::DoorLockState() {
-  bool warning_unlocked = (StdMetrics.ms_v_env_parktime->AsInt() > m_park_timeout_secs &&
-                          !StdMetrics.ms_v_env_on->AsBool() &&
-                          !StdMetrics.ms_v_env_locked->AsBool() &&
+  bool warning_unlocked = (StdMetrics.ms_v_env_parktime->AsInt(0) > m_park_timeout_secs &&
+                          !IsOnEQ() &&
+                          !StdMetrics.ms_v_env_locked->AsBool(false) &&
+                          !m_cmd_locked &&
                           !m_warning_unlocked);
   
   if (warning_unlocked) {
       m_warning_unlocked = true;
       ESP_LOGI(TAG, "Warning: Vehicle is unlocked and parked for more than 10 minutes");
       MyNotify.NotifyString("alert", "vehicle.unlocked", "The vehicle is unlocked and parked for more than 10 minutes.");
-  } else if (StdMetrics.ms_v_env_parktime->AsInt() > m_park_timeout_secs +10 && !warning_unlocked){
+  } else if (StdMetrics.ms_v_env_parktime->AsInt(0) > m_park_timeout_secs +10 && !warning_unlocked){
       m_warning_unlocked = true; // prevent warning if the vehicle is parked locked for more than 10 minutes
   }
 }
@@ -469,6 +470,12 @@ void OvmsVehicleSmartEQ::smartOn()
   m_climate_restart_ticker = 0;
   // reset idle ticker when vehicle turned on to prevent trigger every 60 sec.
   m_idle_ticker = 15 * 60;
+  // canwrite enable write access, only when car is on
+  if(IsCANwrite()) 
+    {
+    smartOBDpolling(true);
+    }
+  ESP_LOGD(TAG, "smartOn()");
 }
 
 void OvmsVehicleSmartEQ::smartOff()
@@ -477,8 +484,37 @@ void OvmsVehicleSmartEQ::smartOff()
   StdMetrics.ms_v_env_gear->SetValue(0);
 }
 
+void OvmsVehicleSmartEQ::smartAwake()
+{
+  // enable active polling when car wakes up (canwrite only)
+  if(m_enable_write) 
+    {
+    smartOBDpolling(true);
+    }
+  else if (m_enable_write_caron && m_can_active)
+    {
+    smartOBDpolling(false);
+    }
+}
+
+void OvmsVehicleSmartEQ::smartSleep()
+{
+  // disable active polling when car goes to sleep
+  if((m_enable_write_caron && m_can_active) || m_enable_write_sleep)
+    smartOBDpolling(false);
+  ESP_LOGD(TAG, "smartSleep()");
+}
+
 void OvmsVehicleSmartEQ::smartChargeStart()
 {
+  if (m_charge_finished)
+    {
+    m_poll_on_charge = true;
+    ResetChargingValues();
+    if (m_resettrip)
+      ResetTripCounters();
+    }
+  
   // Set charging metrics
   StdMetrics.ms_v_charge_pilot->SetValue(true);
   StdMetrics.ms_v_charge_mode->SetValue("standard");
@@ -486,13 +522,18 @@ void OvmsVehicleSmartEQ::smartChargeStart()
   StdMetrics.ms_v_charge_state->SetValue("charging");
   StdMetrics.ms_v_charge_substate->SetValue("onrequest");
   StdMetrics.ms_v_charge_timestamp->SetValue(StdMetrics.ms_m_timeutc->AsInt());
-  mt_bus_awake->SetValue(true);
   // trigger ADC factor recalculation when HV charging started
   if(m_enable_calcADCfactor && !m_ADCfactor_recalc) 
     {
-    m_ADCfactor_recalc_timer = 4;   // wait at least 4 min. before recalculation
+    m_ADCfactor_recalc_timer = 2;   // wait at least 2 min. before recalculation
     m_ADCfactor_recalc = true;      // recalculate ADC factor when HV charging
     }
+  // canwrite enable write access, only when car is on
+  if(IsCANwrite() && !m_can_active) 
+    {
+    smartOBDpolling(true);
+    }
+  ESP_LOGD(TAG, "smartChargeStart()");
 }
 
 void OvmsVehicleSmartEQ::smartChargeStop()
@@ -507,32 +548,62 @@ void OvmsVehicleSmartEQ::smartChargeStop()
   StdMetrics.ms_v_charge_current->SetValue(0);
   StdMetrics.ms_v_charge_timestamp->SetValue(StdMetrics.ms_m_timeutc->AsInt());
 
-  if (StdMetrics.ms_v_bat_soc->AsInt() < 95) {
+  if (StdMetrics.ms_v_bat_soc->AsInt() < 95)
+    {
     // Assume the charge was interrupted
     ESP_LOGI(TAG,"charge session was interrupted");
     StdMetrics.ms_v_charge_state->SetValue("stopped");
     StdMetrics.ms_v_charge_substate->SetValue("interrupted");
-  } else {
+    }
+  else 
+    {
     // Assume the charge completed normally
     ESP_LOGI(TAG,"charge session completed");
     StdMetrics.ms_v_charge_state->SetValue("done");
     StdMetrics.ms_v_charge_substate->SetValue("onrequest");
-  }
+    }
   // stop recalculation when HV charging stopped
-  m_ADCfactor_recalc_timer = 0;
+  m_ADCfactor_recalc_timer = 2;
   m_ADCfactor_recalc = false;
+  ESP_LOGD(TAG, "smartChargeStop()");
 }
 
 void OvmsVehicleSmartEQ::smartChargePrepare()
 {
-  if (m_charge_finished) ResetChargingValues();
-  if (m_resettrip) ResetTripCounters();
+  ESP_LOGD(TAG, "smartChargePrepare()");
 }
 
 void OvmsVehicleSmartEQ::smartChargeFinish()
 {
   m_charge_finished = true;
+  m_poll_on_charge = false;
   StdMetrics.ms_v_charge_power->SetValue(0);
+  ESP_LOGD(TAG, "smartChargeFinish()");
+}
+
+void OvmsVehicleSmartEQ::smartOBDpolling(bool activate)
+{
+  if(!IsCANwrite())
+    {
+    PollSetPidList(m_can1, NULL);
+    vTaskDelay(200 / portTICK_PERIOD_MS);
+    m_can_active = false;
+    m_poll_on_charge = false;
+    ESP_LOGD(TAG, "smartOBDpolling(): CAN bus polling list cleared (write access disabled)");
+    return;
+    }
+    
+  m_can_active = activate;
+  m_poll_on_charge = m_poll_state == POLLSTATE_CHARGING ? true : false;
+  if (activate)
+    {
+    ESP_LOGD(TAG, "smartOBDpolling(): CAN bus polling list will be updated");
+    }
+  if (!activate)
+    {
+    ESP_LOGD(TAG, "smartOBDpolling(): CAN bus polling list cleared");
+    }
+  HandleOBDpolling();
 }
 
 /**
