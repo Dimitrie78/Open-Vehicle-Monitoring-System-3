@@ -81,11 +81,16 @@ void OvmsVehicleSmart_1::ConfigChanged(OvmsConfigParam* param)
   }
 
 void OvmsVehicleSmart_1::IncomingFrameCan1(CAN_frame_t* p_frame) {
-  if (m_candata_poll != 1) {
-    ESP_LOGI(TAG,"Car has woken (CAN bus activity)");
-    StandardMetrics.ms_v_env_awake->SetValue(true);
-    m_candata_poll = 1;
-    if (m_enable_write) POLLSTATE_ON;
+  uint8_t *data = p_frame->data.u8;
+
+  switch (p_frame->MsgID) {
+    case 0x111:
+      {
+      float curr = (float) CAN_UINT(0); // "equation": "0.1*((B*256+C)-16384)", // A is always 02
+      curr = 0.1f*(curr-16384);
+      StandardMetrics.ms_v_bat_current->SetValue(curr * -1.0f);
+      break;
+      }
   }
 }
 
@@ -187,7 +192,8 @@ void OvmsVehicleSmart_1::PollReply_SOC(const char* data, uint16_t reply_len) {
 }
 
 void OvmsVehicleSmart_1::PollReply_HV_cur(const char* data, uint16_t reply_len) {
-  float curr = 0.1f*(CAN_UINT(0)-16384); // "equation": "0.1*((B*256+C)-16384)", // A is always 02
+  float curr = (float) CAN_UINT(0);
+  curr = 0.1f*(curr-16384);
   StandardMetrics.ms_v_bat_current->SetValue(curr * -1.0f);
 }
 
