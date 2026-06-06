@@ -187,7 +187,8 @@ void OvmsVehicleSmart_1::PollReply_SOC(const char* data, uint16_t reply_len) {
 }
 
 void OvmsVehicleSmart_1::PollReply_HV_cur(const char* data, uint16_t reply_len) {
-  StandardMetrics.ms_v_bat_current->SetValue((float) 0.1f*(CAN_UINT(0)-16384)); // "equation": "0.1*((B*256+C)-16384)", // A is always 02
+  float curr = 0.1f*(CAN_UINT(0)-16384); // "equation": "0.1*((B*256+C)-16384)", // A is always 02
+  StandardMetrics.ms_v_bat_current->SetValue(curr * -1.0f);
 }
 
 void OvmsVehicleSmart_1::PollReply_HV_volt(const char* data, uint16_t reply_len) {
