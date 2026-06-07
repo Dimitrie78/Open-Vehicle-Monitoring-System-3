@@ -2,7 +2,7 @@ set(srcs)
 set(include_dirs)
 
 if (CONFIG_OVMS_VEHICLE_SMART_1)
-  list(APPEND srcs "src/vehicle_smart_1.cpp")
+  list(APPEND srcs "src/vehicle_smart_1.cpp" "src/sht1_web.ccp")
   list(APPEND include_dirs "src")
 endif ()
 

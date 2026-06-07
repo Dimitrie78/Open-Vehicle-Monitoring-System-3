@@ -63,6 +63,10 @@ OvmsVehicleSmart_1::OvmsVehicleSmart_1()
   PollSetPidList(m_can1, smart_1_polls);
   PollSetThrottling(5);
   PollSetResponseSeparationTime(20);
+  
+  #ifdef CONFIG_OVMS_COMP_WEBSERVER
+    WebInit();
+  #endif
   }
 
 /**
@@ -215,6 +219,9 @@ void OvmsVehicleSmart_1::PollReply_odo(const char* data, uint16_t reply_len) {
 OvmsVehicleSmart_1::~OvmsVehicleSmart_1()
   {
   ESP_LOGI(TAG, "Shutdown smart #1 vehicle module");
+#ifdef CONFIG_OVMS_COMP_WEBSERVER
+  WebDeInit();
+#endif
   }
 
 class OvmsVehicleSmart_1Init

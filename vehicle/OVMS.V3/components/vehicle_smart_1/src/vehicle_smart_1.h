@@ -35,7 +35,35 @@
 #define VERSION "1.0.0"
 #define PRESET_VERSION 20260606 // Configuration preset version
 
+#include "ovms_log.h"
+
+#include <deque>
+#include <string>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <cmath>
+#include <stdint.h>
+#include <stdio.h>
+#include <sdkconfig.h>
+#include <vector>
+#include <string>
+
+#include "can.h"
 #include "vehicle.h"
+#include "metrics_standard.h"
+
+#include "ovms_config.h"
+#include "ovms_metrics.h"
+#include "ovms_command.h"
+#include "ovms_events.h"
+#include "ovms_notify.h"
+#include "ovms_peripherals.h"
+#include "ovms_time.h"
+
+#ifdef CONFIG_OVMS_COMP_WEBSERVER
+#include "ovms_webserver.h"
+#endif
 
 // CAN buffer access macros: b=byte# 0..7 / n=nibble# 0..15
 #define CAN_BYTE(b)     data[b]
@@ -60,6 +88,13 @@ class OvmsVehicleSmart_1 : public OvmsVehicle
   public:
     OvmsVehicleSmart_1();
     ~OvmsVehicleSmart_1();
+    
+    // --- Web interface ---
+#ifdef CONFIG_OVMS_COMP_WEBSERVER
+    void WebInit();
+    void WebDeInit();
+    static void WebCfgFeatures(PageEntry_t& p, PageContext_t& c);
+#endif
 
   public:
     void IncomingFrameCan1(CAN_frame_t* p_frame) override;
