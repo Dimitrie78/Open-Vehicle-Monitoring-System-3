@@ -1163,9 +1163,9 @@ std::string OvmsWebServer::CfgInit5(PageEntry_t& p, PageContext_t& c, std::strin
     apn_pass = MyConfig.GetParamValue("modem", "apn.password");
     gps = MyConfig.GetParamValueBool("modem", "enable.gps", false);
 
-    // default: hologram
+    // default: simbase
     if (apn.empty())
-      apn = "hologram";
+      apn = "simbase";
   }
 
   // output:
@@ -1249,7 +1249,7 @@ std::string OvmsWebServer::CfgInit5(PageEntry_t& p, PageContext_t& c, std::strin
 
   c.input_checkbox("Enable cellular modem", "modem", modem);
   c.input_text("APN", "apn", apn.c_str(), NULL,
-    "<p>For Hologram, use APN <code>hologram</code> with empty username &amp; password</p>");
+    "<p>For Simbase, use APN <code>simbase</code> with empty username &amp; password</p>");
   c.input_text("APN username", "apn_user", apn_user.c_str());
   c.input_text("APN password", "apn_pass", apn_pass.c_str());
 
