@@ -474,6 +474,12 @@ function getPathURL(path) {
     return '';
 }
 
+// Use string as template (Mateusz Moska https://stackoverflow.com/a/41015840)
+String.prototype.interpolate = function(params) {
+  const keys = Object.keys(params||{});
+  const vals = Object.values(params||{});
+  return new Function(...keys, `return \`${this}\`;`)(...vals);
+}
 
 /**
  * Hexadecimal encoding & decoding
@@ -899,6 +905,8 @@ var unit_conversions = {
       "mipkwh>kmpkwh":      mi_to_km,
       "celcius>fahrenheit": function (value) { return ((value*9)/5) + 32; },
       "fahrenheit>celcius": function (value) { return ((value-32)*5)/9; },
+      "celciusdiff>fahrenheitdiff": function (value) { return (value*9)/5; },
+      "fahrenheitdiff>celciusdiff": function (value) { return (value*5)/9; },
       "kpa>pa":             kx_to_x,
       "kpa>bar":            function (value) { return value/100; },
       "kpa>psi":            function (value) { return value * 0.14503773773020923; },
@@ -952,7 +960,9 @@ units.convertMetricToUserUnits = function (value, name) {
     cnvfn = convertUnitFunction(unit_entry.native, unit_entry.code);
     this.metrics[name].user_fn = cnvfn;
   }
-  return cnvfn(value);
+  // Vector metrics (e.g. v.b.c.temp) arrive as arrays; the scalar conversion
+  // functions return NaN for an array, so convert element-wise (issue #1426).
+  return Array.isArray(value) ? value.map(function (v) { return cnvfn(v); }) : cnvfn(value);
 }
 units.userUnitLabelFromMetric = function (name) {
     var unit_entry = this.metrics[name];
@@ -2355,7 +2365,8 @@ $(function(){
   // Metrics displays:
   $("body").on('msg:metrics', '.receiver', function(e, update) {
     $(this).find(".metric").each(function() {
-      var $el = $(this), metric = $el.data("metric"), prec = $el.data("prec"), scale = $el.data("scale"), useUser = $el.data("user");
+      var $el = $(this), metric = $el.data("metric"), prec = $el.data("prec"), scale = $el.data("scale"), useUser = $el.data("user"),
+        template = $el.data("template");
       if (!metric) return;
       // filter:
       var keys = metric.split(","), val;
@@ -2369,12 +2380,15 @@ $(function(){
       if (val == null) return;
 
       // process:
-      if ($el.hasClass("text")) {
+      if (template) {
+        let elt = $el.children(".value");
+        if (elt.length == 0) elt = $el;
+        elt.text(template.interpolate({ "update": update }));
+      } else if ($el.hasClass("text")) {
         var elt = $el.children(".value");
         if (elt) elt.text(val);
         elt = $el.children(".unit");
         if (elt) elt.text(val);
-
       } else if ($el.hasClass("number")) {
         var vf = val;
         if (scale != null)

@@ -45,6 +45,7 @@ static const char *TAG = "v-nissanleaf";
 #endif
 #include "ovms_command.h"
 #include "ovms_config.h"
+#include "mcp2515.h"
 
 #define MAX_POLL_DATA_LEN         329
 #define BMS_TXID                  0x79B
@@ -71,10 +72,10 @@ enum poll_states
 
 static const OvmsPoller::poll_pid_t obdii_polls_ze1[] =
   {
-    // BUS 2
-    { CHARGER_TXID, CHARGER_RXID, VEHICLE_POLL_TYPE_OBDIIGROUP, VIN_PID, {  0, 3600, 0, 0 }, 2, ISOTP_STD },           // VIN [19] Never changes
-    { CHARGER_TXID, CHARGER_RXID, VEHICLE_POLL_TYPE_OBDIIEXTENDED, QC_COUNT_PID, {  0, 0, 0, 3600 }, 2, ISOTP_STD },   // QC [2] Only changes when charging. Do not update when car is active to reduce traffic.
-    { CHARGER_TXID, CHARGER_RXID, VEHICLE_POLL_TYPE_OBDIIEXTENDED, L1L2_COUNT_PID, {  0, 0, 0, 3600 }, 2, ISOTP_STD }, // L0/L1/L2 [2] Only changes when charging. Do not update when car is active to reduce traffic.
+    // BUS 2                                                                         Off,   On, Run, Charge 
+    { CHARGER_TXID, CHARGER_RXID, VEHICLE_POLL_TYPE_OBDIIGROUP, VIN_PID,            {  0, 3600,   0,      0 }, 2, ISOTP_STD }, // VIN [19] Never changes
+    { CHARGER_TXID, CHARGER_RXID, VEHICLE_POLL_TYPE_OBDIIEXTENDED, QC_COUNT_PID,    {  0,    0,   0,   3600 }, 2, ISOTP_STD }, // QC [2] Only changes when charging. Do not update when car is active to reduce traffic.
+    { CHARGER_TXID, CHARGER_RXID, VEHICLE_POLL_TYPE_OBDIIEXTENDED, L1L2_COUNT_PID,  {  0,    0,   0,   3600 }, 2, ISOTP_STD }, // L0/L1/L2 [2] Only changes when charging. Do not update when car is active to reduce traffic.
     // BUS 1
     { BMS_TXID, BMS_RXID, VEHICLE_POLL_TYPE_OBDIIGROUP, 0x01, {  0, 60, 60, 60 }, 1, ISOTP_STD },   // bat [39/41]
     { BMS_TXID, BMS_RXID, VEHICLE_POLL_TYPE_OBDIIGROUP, 0x02, {  0, 60, 60, 60 }, 1, ISOTP_STD },   // battery voltages [196]
@@ -290,6 +291,81 @@ OvmsVehicleNissanLeaf::~OvmsVehicleNissanLeaf()
 #endif
   }
 
+/// @brief Set the MCP2515 hardware receive filter for CAN2
+/// This is used to filter out unwanted CAN messages on the CAR bus (CAN2) to reduce CPU load and improve performance.
+/// The filter is set according to the configured Nissan Leaf variant (ZE1 or AZE0/pre-ZE1).
+/// @param bus The CAN bus to configure (expected to be an MCP2515).
+/// @param enable true to apply the Leaf filter, false to clear it (accept all).
+void OvmsVehicleNissanLeaf::SetCan2Mcp2515Filter(canbus* bus, bool enable)
+  {
+  mcp2515* sbus = (mcp2515*)bus;
+  if (sbus == NULL)
+    {
+    ESP_LOGW(TAG, "can2 is not available; hardware receive filter not set");
+    return;
+    }
+
+  mcp2515_filter_config_t cfg = {};
+  if (enable)
+    {
+    if (cfg_ze1)
+      {
+      // ZE1 (2018+) Leaf.
+      // Mask 0 / filters 0-1: shared mask with bits 7,6,4 don't-care.
+      cfg.mask[0].b.sid = 0x72F;
+      cfg.filter[0].b.sid = 0x355;  // covers 0x355 and 0x385
+      cfg.filter[1].b.sid = 0x5a9;  // covers 0x5a9 and 0x5b9
+
+      // Mask 1 / filters 2-5: exact 11-bit ID match.
+      cfg.mask[1].b.sid = 0x7FF;
+      cfg.filter[2].b.sid = 0x421;
+      cfg.filter[3].b.sid = 0x5c5;
+      cfg.filter[4].b.sid = 0x60d;
+      cfg.filter[5].b.sid = 0x79a;
+      }
+    else
+      {
+      // AZE0 / pre-ZE1 Leaf.
+      // The throttle (0x180) and footbrake (0x292) frames are intentionally
+      // excluded all other CAN2 IDs handled by the AZE0 firmware are kept.
+      // The MCP2515 has only 6 filters / 2 masks, so 0x5a9 / 0x5b3 / 0x5b9
+      // share one filter and 0x5c5 / 0x79a use wider masks than ideal.  This
+      // accepts some additional 0x5xx / 0x7xx traffic but is the only way to
+      // admit every non-optional AZE0 frame with the available hardware.
+      //
+      // Mask 0 / filters 0-1: shared mask with bits 7,6,4 don't-care.
+      cfg.mask[0].b.sid = 0x72F;
+      cfg.filter[0].b.sid = 0x355;  // covers 0x355 (odometer units) and 0x385 (TPMS)
+      cfg.filter[1].b.sid = 0x60d;  // vehicle state (doors, locks, lights, start button)
+
+      // Mask 1 / filters 2-5: shared mask with bits 4,3,2,1 don't-care.
+      cfg.mask[1].b.sid = 0x7E1;
+      cfg.filter[2].b.sid = 0x5a1;  // covers 0x5a9 (range), 0x5b3 (instrument SOH), 0x5b9 (charge bars)
+      cfg.filter[3].b.sid = 0x421;  // gear selector
+      cfg.filter[4].b.sid = 0x5c1;  // covers 0x5c5 (parking brake / odometer)
+      cfg.filter[5].b.sid = 0x780;  // covers 0x79a (charger ISOTP response ID, CHARGER_RXID)
+      }
+    }
+    else
+    {
+    // Clear the filter (accept all).
+    cfg = {};
+    }
+
+  esp_err_t res = sbus->SetAcceptanceFilter(cfg);
+  if (res == ESP_OK)
+    {
+    ESP_LOGI(TAG, "can2 MCP2515 hardware receive filter %s (%s)",
+             enable ? "set" : "cleared", cfg_ze1 ? "ZE1" : "AZE0");
+    }
+  else
+    {
+    ESP_LOGE(TAG, "can2 MCP2515 hardware receive filter %s (%s) failed",
+             enable ? "set" : "cleared", cfg_ze1 ? "ZE1" : "AZE0");
+    }
+  }
+
+
 void OvmsVehicleNissanLeaf::CommandInit()
   {
   cmd_xnl = MyCommandApp.RegisterCommand("xnl","Nissan Leaf framework");
@@ -308,6 +384,7 @@ void OvmsVehicleNissanLeaf::CommandInit()
     "Example: 79B 7BB 2101", 3, 3);
   cmd_can2->RegisterCommand("broadcast", "Send OBD2 request as broadcast", shell_obd_request, "<request>", 1, 1);
   }
+
 
 void OvmsVehicleNissanLeaf::ConfigChanged(OvmsConfigParam* param)
   {
@@ -339,6 +416,9 @@ void OvmsVehicleNissanLeaf::ConfigChanged(OvmsConfigParam* param)
   if (!cfg_enable_write) PollSetState(POLLSTATE_OFF);
 
   cfg_ze1 = MyConfig.GetParamValueBool("xnl", "ze1", false);
+
+  // Apply the CAN2 MCP2515 hardware filter for the configured Leaf variant.
+  SetCan2Mcp2515Filter(m_can2, true);
   }
 
 
@@ -725,6 +805,7 @@ void OvmsVehicleNissanLeaf::PollReply_Battery(const uint8_t *reply_data, uint16_
 
   float newCarAh = MyConfig.GetParamValueFloat("xnl", "newCarAh", GEN_1_NEW_CAR_AH);
   float soh = ah / newCarAh * 100;
+  ESP_LOGD(TAG, "PollReply_Battery SOH: %.2f", soh);
   m_soh_new_car->SetValue(soh);
   if (cfg_soh_newcar)
     {
@@ -845,7 +926,7 @@ void OvmsVehicleNissanLeaf::PollReply_BMS_SOH(const uint8_t *reply_data, uint16_
 
     uint16_t uint_soh = (reply_data[2] << 8) | reply_data[3];
     float soh = uint_soh / 100.0f;
-    ESP_LOGD(TAG, "BMS SOH: %.2f", soh);
+    ESP_LOGD(TAG, "PollReply_BMS_SOH SOH: %.2f", soh);
     m_soh_instrument->SetValue(soh);
     if (!cfg_soh_newcar)
       {
@@ -1064,6 +1145,42 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan1(CAN_frame_t* p_frame)
             }
           }
         }
+
+      // --------- Patch ZE1 : detect CHAdeMO charging via battery voltage/current ---------
+      if (cfg_ze1)
+        {
+        bool car_on = StandardMetrics.ms_v_env_on->AsBool();
+
+        // DC fast charge active if: car off + battery voltage plausible + strong inbound current
+        if (!car_on && battery_voltage > 200.0f && battery_current < -25.0f)
+          {
+          // CHAdeMO detected
+          if (StandardMetrics.ms_v_charge_state->AsString() != "charging"
+              || StandardMetrics.ms_v_charge_type->AsString() != "chademo")
+            {
+            vehicle_nissanleaf_charger_status(CHARGER_STATUS_QUICK_CHARGING);
+            }
+          // Pilot ON (cable connected, station OK)
+          StandardMetrics.ms_v_charge_pilot->SetValue(true);
+          // Keep charge metrics up-to-date
+          StandardMetrics.ms_v_charge_voltage->SetValue(battery_voltage);
+          StandardMetrics.ms_v_charge_current->SetValue(-battery_current);
+          StandardMetrics.ms_v_charge_power  ->SetValue(-battery_power);
+          if (battery_voltage > 0)
+            StandardMetrics.ms_v_charge_climit->SetValue(
+              m_battery_chargerate_max->AsFloat() * 1000.0f / battery_voltage);
+          }
+        else if (!car_on
+                 && StandardMetrics.ms_v_charge_inprogress->AsBool()
+                 && StandardMetrics.ms_v_charge_type->AsString() == "chademo"
+                 && battery_current > -5.0f)
+          {
+          // End of CHAdeMO charging
+          StandardMetrics.ms_v_charge_pilot->SetValue(false);
+          vehicle_nissanleaf_charger_status(CHARGER_STATUS_FINISHED);
+          }
+        }
+      // --------- End patch ZE1 ---------
 
     }
       break;
@@ -1407,10 +1524,25 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan1(CAN_frame_t* p_frame)
       break;
     case 0x54f:
       /* Climate control's measurement of temperature inside the car.
-       * Appears to be in Fahrenheit. Unsure why the check for 20?
-       * mjk: seeems like off by 6 celcius on 2013 models, so added cabintempoffset that can be set in GUI.
+       * AZE0 (2013-2017): Fahrenheit, may be off by ~6°C requiring xnl.cabintempoffset.
+       * ZE1 (2018+): half-degree Celsius with 40°C bias, same encoding as ambient temp
+       * on 0x54C byte 6 (which OVMS already parses correctly). Reverse-engineered Apr 2026
+       * by samr037 by comparing ZE1 captures at known cabin temps:
+       *   d[0]=0x72(114) -> 17°C   (matches today's ~18°C cabin)
+       *   d[0]=0x8C(140) -> 30°C   (matches Jul 2024 summer cabin)
+       *   d[0]=0x50(80)  -> 0°C    (sentinel/HVAC off — skipped)
+       * After this patch, xnl.cabintempoffset is unnecessary on ZE1.
        */
-      if (d[0] != 20)
+      if (cfg_ze1)
+        {
+        if (d[0] != 0x50 && d[0] != 20)  // skip sentinels
+          {
+          float cabin_c = d[0] / 2.0f - 40.0f;
+          if (cabin_c > -30.0f && cabin_c < 60.0f)
+            StandardMetrics.ms_v_env_cabintemp->SetValue(cabin_c);
+          }
+        }
+      else if (d[0] != 20)
         {
         StandardMetrics.ms_v_env_cabintemp->SetValue((5.0 / 9.0 * (d[0] - 32)) + MyConfig.GetParamValueFloat("xnl", "cabintempoffset", DEFAULT_CABINTEMP_OFFSET));
         // StandardMetrics.ms_v_env_cabintemp->SetValue(d[0] / 2.0 - 14);
@@ -1439,6 +1571,27 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan1(CAN_frame_t* p_frame)
       break;
     case 0x59e:
       {
+      // ZE1 (40/62 kWh): byte 7 = dashboard SOC (multiplier 0.5).
+      // Reverse-engineered Apr 2026 by samr037 by comparing two CAN captures
+      // taken on a 2018 ZE1 40kWh at known dashboard SOCs:
+      //   real ~59% / dash ~55%  -> byte 7 = 0x6E (110/2 = 55%)
+      //   real ~95% / dash 100%  -> byte 7 = 0xC8 (200/2 = 100%)
+      //   real ~81% / dash  86%  -> byte 7 = 0xAC (172/2 = 86%)
+      // This message previously had no parser for ZE1; xnl.v.b.soc.instrument
+      // was always 0 (Issue #323 long-standing gap).
+      if (cfg_ze1)
+        {
+        float instr_soc = d[7] / 2.0f;
+        if (instr_soc > 0.0f && instr_soc <= 100.0f)
+          {
+          m_soc_instrument->SetValue(instr_soc);
+          // If user opted out of newcar SOC, use dashboard SOC as the main metric:
+          if (!MyConfig.GetParamValueBool("xnl", "soc.newcar", false))
+            {
+            StandardMetrics.ms_v_bat_soc->SetValue(instr_soc);
+            }
+          }
+        }
       switch(m_battery_type->AsInt(BATTERY_TYPE_2_24kWh))
         {
         case BATTERY_TYPE_1_24kWh:
@@ -1477,15 +1630,20 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan1(CAN_frame_t* p_frame)
           break;
         }
 
+
       // ZE0 SOH
-      if (m_battery_type->AsInt(0) == BATTERY_TYPE_1_24kWh) {
-        uint8_t soh = (d[4] >> 1 & 0xF7);
-        m_soh_instrument->SetValue(soh);
-        if (!MyConfig.GetParamValueBool("xnl", "soh.newcar", false))
-        {
-          StandardMetrics.ms_v_bat_soh->SetValue(soh);
+      if (!cfg_ze1) {
+        if (m_battery_type->AsInt(0) == BATTERY_TYPE_1_24kWh) {
+          uint8_t soh = (d[4] >> 1 & 0xF7);
+          m_soh_instrument->SetValue(soh);
+          ESP_LOGD(TAG, "IncomingFrameCan1 SOH: %d", soh);
+          if (!MyConfig.GetParamValueBool("xnl", "soh.newcar", false))
+          {
+            StandardMetrics.ms_v_bat_soh->SetValue(soh);
+          }
         }
       }
+
 
 
       uint16_t nl_gids = ((uint16_t) d[0] << 2) | ((d[1] & 0xc0) >> 6);
@@ -1686,38 +1844,51 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan2(CAN_frame_t* p_frame)
 
   switch (p_frame->MsgID)
     {
-    case 0x180:
+    /* These are no longer received due to the hardware filter
+    Leaving the code here for reference.  This could be removed 
+    once we are confident that we've address all issues arrising
+    from the removal.  For example the foot barke forms part of the
+    logic to determine the state of the car.
+     
+    case 0x180: // Filtered out by CAN RX filter on ZE1
       if (d[5] != 0xff)
         {
         StandardMetrics.ms_v_env_throttle->SetValue(d[5] / 2.00);
         }
       break;
-    case 0x292:
+    case 0x292: // Filtered out by CAN RX filter on ZE1
       if (d[6] != 0xff)
         {
         StandardMetrics.ms_v_env_footbrake->SetValue(d[6] / 1.39);
         }
       break;
-   case 0x355:
+    */
+    case 0x355:
      // The odometer value on the bus is always in units appropriate
      // for the car's intended market and is unaffected by the dash
      // display preference (in d[4] bit 5).
-     if ((d[6]>>5) & 1)
-       {
-         m_odometer_units = Miles;
-       }
-     else
-       {
-         m_odometer_units = Kilometers;
-       }
-     break;
-    case 0x385:
+      if ((d[6]>>5) & 1)
+        {
+        m_odometer_units = Miles;
+        }
+      else
+        {
+        m_odometer_units = Kilometers;
+        }
+      ESP_LOGV(TAG, "IncomingFrameCan2 odometer units: %s", m_odometer_units == Miles ? "Miles" : "Kilometers");
+      break;
+    case 0x385: 
       if (d[2]) StandardMetrics.ms_v_tpms_pressure->SetElemValue(MS_V_TPMS_IDX_FL, d[2] / 4.0, PSI);
       if (d[3]) StandardMetrics.ms_v_tpms_pressure->SetElemValue(MS_V_TPMS_IDX_FR, d[3] / 4.0, PSI);
       if (d[4]) StandardMetrics.ms_v_tpms_pressure->SetElemValue(MS_V_TPMS_IDX_RR, d[4] / 4.0, PSI);
       if (d[5]) StandardMetrics.ms_v_tpms_pressure->SetElemValue(MS_V_TPMS_IDX_RL, d[5] / 4.0, PSI);
+      ESP_LOGV(TAG, "IncomingFrameCan2 TPMS: FL=%f FR=%f RR=%f RL=%f",
+               StandardMetrics.ms_v_tpms_pressure->GetElemValue(MS_V_TPMS_IDX_FL, PSI),
+               StandardMetrics.ms_v_tpms_pressure->GetElemValue(MS_V_TPMS_IDX_FR, PSI),
+               StandardMetrics.ms_v_tpms_pressure->GetElemValue(MS_V_TPMS_IDX_RR, PSI),
+               StandardMetrics.ms_v_tpms_pressure->GetElemValue(MS_V_TPMS_IDX_RL, PSI));
       break;
-    case 0x421:
+    case 0x421:  
       switch ( (d[0] >> 3) & 7 )
         {
         case 0: // Parking
@@ -1740,14 +1911,16 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan2(CAN_frame_t* p_frame)
           if (cfg_enable_write) PollSetState(POLLSTATE_RUNNING);
           break;
         }
+      ESP_LOGV(TAG, "IncomingFrameCan2 Gear: %d", StandardMetrics.ms_v_env_gear->AsInt());
       break;
-    case 0x5a9:
+    case 0x5a9:  
       {
       uint16_t nl_range = d[1] << 4 | d[2] >> 4;
       if (nl_range != 0xfff)
         {
-        m_range_instrument->SetValue(nl_range / 5, Kilometers);
+        m_range_instrument->SetValue(nl_range / 5, Kilometers); // incorrect on a ZE1 (409 returned when dispay shows 129 km)
         }
+      ESP_LOGV(TAG, "IncomingFrameCan2 Range: %f km", m_range_instrument->AsFloat());
       break;
       }
     case 0x5b9:
@@ -1759,6 +1932,7 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan2(CAN_frame_t* p_frame)
       uint16_t minutes = ((d[1] & 0x07) | d[2]);
       m_charge_minutes_3kW_remaining->SetValue(minutes);
       }
+      ESP_LOGV(TAG, "IncomingFrameCan2 Charge bars: %d, 3kW minutes: %d", m_remaining_chargebars->AsInt(), m_charge_minutes_3kW_remaining->AsInt());
       break;
     case 0x5b3:
       {
@@ -1769,6 +1943,7 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan2(CAN_frame_t* p_frame)
           if (soh != 0)
             {
             m_soh_instrument->SetValue(soh);
+            ESP_LOGD(TAG, "IncomingFrameCan2 SOH: %d", soh);
             // we use this unless the user has opted otherwise
             if (!cfg_soh_newcar)
               {
@@ -1785,6 +1960,7 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan2(CAN_frame_t* p_frame)
         {
         StandardMetrics.ms_v_pos_odometer->SetValue(d[1] << 16 | d[2] << 8 | d[3], m_odometer_units);
         }
+      ESP_LOGV(TAG, "IncomingFrameCan2 Odometer: %f %s", StandardMetrics.ms_v_pos_odometer->AsFloat(m_odometer_units), m_odometer_units == Miles ? "mi" : "km");
       break;
     case 0x60d:
       StandardMetrics.ms_v_door_trunk->SetValue(d[0] & 0x80);
@@ -1830,7 +2006,7 @@ void OvmsVehicleNissanLeaf::IncomingFrameCan2(CAN_frame_t* p_frame)
             }
           break;
         }
-
+      ESP_LOGV(TAG, "IncomingFrameCan2 Start button: %d, Locked: %d, Headlights: %d", (d[1]>>1) & 3, StandardMetrics.ms_v_env_locked->AsBool(), StandardMetrics.ms_v_env_headlights->AsBool());
       break;
     }
   }
@@ -2581,6 +2757,11 @@ OvmsVehicle::vehicle_command_t OvmsVehicleNissanLeaf::CommandHomelink(int button
 OvmsVehicle::vehicle_command_t OvmsVehicleNissanLeaf::CommandClimateControl(bool climatecontrolon)
   {
   ESP_LOGI(TAG, "CommandClimateControl");
+  if (!climatecontrolon)
+    { // stops the scheduled climate restart
+    m_climate_restart = false;
+    m_climate_restart_ticker = 0;
+    }
   return RemoteCommandHandler(climatecontrolon ? ENABLE_CLIMATE_CONTROL : DISABLE_CLIMATE_CONTROL);
   }
 

@@ -39,14 +39,14 @@ void OvmsVehicleSmartEQ::HandlePollState() {
 
   static const char* state_names[] = {"Off", "Awake", "Running", "Charging"};
   static const char* state_disabled = "Pollstate Off (write disabled)";
-  if (!m_enable_write && !m_enable_write_caron) 
+  if (!canCANbusActive()) 
     {
     if (m_poll_state != POLLSTATE_OFF) 
       {
-      PollSetState(POLLSTATE_OFF);
+      smartCoolDownPolling();
       ESP_LOGD(TAG, "Pollstate Off (write disabled)");
+      mt_poll_state->SetValue(state_disabled);
       }
-    mt_poll_state->SetValue(state_disabled);
     return;
     }
   
@@ -58,25 +58,23 @@ void OvmsVehicleSmartEQ::HandlePollState() {
     }
   else if (IsOnEQ())
     {
-    desired_state = POLLSTATE_ON;    //- car is on
+    desired_state = POLLSTATE_ON;         //- car is on
     }
   else if (IsAwakeEQ())
     {
-    desired_state = POLLSTATE_AWAKE;         //- car is awake (but not on)
+    desired_state = POLLSTATE_AWAKE;      //- car is awake (but not on)
     }    
-  else if (!IsAwakeEQ() && !IsChargingEQ())
+  else if (!IsAwakeEQ())
     {
     desired_state = POLLSTATE_OFF;        //- car is asleep
     }
 
   if (desired_state != m_poll_state) 
-    {
-    PollSetState(desired_state);
-    ESP_LOGD(TAG, "Pollstate %s", state_names[desired_state]);
-    mt_poll_state->SetValue(state_names[desired_state]);
+    {      
+    PollSetState(POLLSTATE_OFF);          // Reset to off while transitioning between states to avoid conflicts
     if (desired_state == POLLSTATE_OFF)
       {
-      smartSleep();                      // switch to liten mode OBDII polling immediately
+      smartSleep();                      // switch to listen mode OBDII polling immediately
       }
     else if (desired_state == POLLSTATE_AWAKE)
       {
@@ -90,15 +88,20 @@ void OvmsVehicleSmartEQ::HandlePollState() {
       {
       smartChargeStart();                 // switch to active mode OBDII polling immediately
       }
+    // smartCoolDownPolling() (called inside smart* functions) resets m_poll_state → POLLSTATE_OFF.
+    // Restore only the tracking variable here so HandlePollState() does not re-trigger on cooldown expiry.
+    // MyPollers stays at POLLSTATE_OFF (cooldown still active); PollerStateTicker re-activates it
+    // via PollSetState(m_poll_state) once the cooldown ticker reaches zero.
+    ESP_LOGD(TAG, "Pollstate %s", state_names[desired_state]);
+    m_poll_state = desired_state;
+    mt_poll_state->SetValue(state_names[desired_state]);
     }
 }
 
 void OvmsVehicleSmartEQ::HandleOBDpolling() {
-  PollSetPidList(m_can1, NULL);
-  PollSetThrottling(5);
+  PollSetPidList(m_can1, NULL);  // Stop active polls during list rebuild (sufficient – no smartCoolDownPolling needed here)
+  PollSetThrottling(3);
   PollSetResponseSeparationTime(20);
-  HandlePollState();
-
   // modify Poller..
   m_poll_vector.clear();
   if (!m_can_active)
@@ -115,22 +118,14 @@ void OvmsVehicleSmartEQ::HandleOBDpolling() {
   if (m_obdii_79b) // 79b non-cell PIDs
     m_poll_vector.insert(m_poll_vector.end(), obdii_79b_polls, endof_array(obdii_79b_polls));
 
-  if (m_obdii_745) // 745 PIDs Doorlock and VIN
+  if (m_obdii_745) // 745 PIDs Driver Door lock
     m_poll_vector.insert(m_poll_vector.end(), obdii_745_polls, endof_array(obdii_745_polls));
        
-  if (m_obdii_745_tpms) // full TPMS mode with individual pressure/temp/alert status for each wheel
+  if (m_obdii_745_tpms && IsOnEQ()) // full TPMS mode with individual pressure/temp/alert status for each wheel
     m_poll_vector.insert(m_poll_vector.end(), obdii_745_tpms_polls, endof_array(obdii_745_tpms_polls));
   
-  if (m_obdii_79b_cell) // 79b PIDs cell V/R/T values with configurable intervals
-    {
-    for (const auto& p79bcell : obdii_79b_cell_vrt_polls) 
-      {
-      OvmsPoller::poll_pid_t p79bcell_mod = p79bcell;
-      p79bcell_mod.polltime[2] = m_cfg_cell_interval_drv;
-      p79bcell_mod.polltime[3] = m_cfg_cell_interval_chg;
-      m_poll_vector.push_back(p79bcell_mod);
-      }
-    }
+  if (m_obdii_79b_cell) // 79b PIDs cell V/R/T values
+    m_poll_vector.insert(m_poll_vector.end(), obdii_79b_cell_vrt_polls, endof_array(obdii_79b_cell_vrt_polls));
     
   if (m_obdii_7e4_dcdc) // 7e4 PIDs DCDC 
     m_poll_vector.insert(m_poll_vector.end(), obdii_7e4_dcdc_polls, endof_array(obdii_7e4_dcdc_polls));
@@ -138,10 +133,10 @@ void OvmsVehicleSmartEQ::HandleOBDpolling() {
   if (m_obdii_7e4) // 7e4 PIDs charging plug, 12V system, and misc
     m_poll_vector.insert(m_poll_vector.end(), obdii_7e4_polls, endof_array(obdii_7e4_polls));
   
-  if (m_obdii_743) // 743 PIDs Maintenance data, OBD trip counters
+  if (m_obdii_743) // 743 PIDs OBD trip counters
     m_poll_vector.insert(m_poll_vector.end(), obdii_743_polls, endof_array(obdii_743_polls));
   
-  if (m_poll_on_charge)
+  if (m_poll_on_charge) // additional PIDs to poll when charging, depending on fast/slow charger detected
     { 
     if (mt_obl_fastchg->AsBool(false)) 
       {
@@ -153,6 +148,10 @@ void OvmsVehicleSmartEQ::HandleOBDpolling() {
       }
     }
 
+  // Skip one-time polls if static IDs are already known from this session
+  if (!m_static_ids_read)
+      m_poll_vector.insert(m_poll_vector.end(), obdii_onetime_polls, endof_array(obdii_onetime_polls));
+      
   // Terminate poll list:
   m_poll_vector.push_back(POLL_LIST_END);
   // Release excess capacity to free unused heap memory
@@ -167,14 +166,17 @@ void OvmsVehicleSmartEQ::HandleOBDpolling() {
  * Called once per second from Ticker1
  */
 void OvmsVehicleSmartEQ::HandleEnergy() {
-  float power = StdMetrics.ms_v_bat_power->AsFloat(0.0f); // in kW
+  if(IsChargingEQ()) 
+    return; // Skip energy handling while charging (handled in HandleCharging)
+
+  float power = StdMetrics.ms_v_bat_power->AsFloat(0.0f); // kW - charge(-)/discharge(+) HV battery power
   ESP_LOGD(TAG, "HandleEnergy(): power=%.2f kW", power);
   if (power != 0.0f)
     {
     // Update energy used and recovered   
     float energy = fabs(power / 3600.0f);       // 1 second worth of energy in kwh's
     float current_Ah = fabs(StdMetrics.ms_v_bat_current->AsFloat(0.0f) / 3600.0f);   // 1 second worth of current in Ah
-    if (power < 0.0f)
+    if (power > 0.0f)
       {
       float energy_used = StdMetrics.ms_v_bat_energy_used->AsFloat(0.0f) + energy;
       float energy_used_total = StdMetrics.ms_v_bat_energy_used_total->AsFloat(0.0f) + energy;
@@ -185,7 +187,7 @@ void OvmsVehicleSmartEQ::HandleEnergy() {
       StdMetrics.ms_v_bat_coulomb_used->SetValue(coulomb_used);
       StdMetrics.ms_v_bat_coulomb_used_total->SetValue(coulomb_used_total);
       }
-    else if (power > 0.0f)
+    else if (power < 0.0f)
       {
       float energy_recd = StdMetrics.ms_v_bat_energy_recd->AsFloat(0.0f) + energy;
       float energy_recd_total = StdMetrics.ms_v_bat_energy_recd_total->AsFloat(0.0f) + energy;
