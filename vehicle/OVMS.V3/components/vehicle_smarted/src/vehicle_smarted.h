@@ -375,6 +375,38 @@ class OvmsVehicleSmartED : public OvmsVehicle
     void HandleCharging12v();
     unsigned int m_charging_timer;
   
+  // ed_variant_coding.cpp
+  protected:
+    bool variantCoding_cepc;
+    bool variantCoding_ki;
+    bool flow_request = false;
+    bool seed_valid = false;
+  
+  public:
+    void VCInit();
+    void VCticker1();
+    void sendWake_VC_cepc();
+    void sendWake_VC_ki();
+    void VC_cepc_start(int verbosity, OvmsWriter* writer);
+    void VC_ki_start(int verbosity, OvmsWriter* writer);
+    void VC_stop(int verbosity, OvmsWriter* writer);
+    void VC_cepc_get_seed(int verbosity, OvmsWriter* writer);
+    void VC_ki_get_seed(int verbosity, OvmsWriter* writer);
+    void VC_cepc_get_data(int verbosity, OvmsWriter* writer);
+    void VC_cepc_send_data(bool wippen, int verbosity, OvmsWriter* writer);
+    void VC_ki_get_data(int verbosity, OvmsWriter* writer);
+    void VC_ki_send_data(int verbosity, OvmsWriter* writer);
+    void VC_ecu_reset(uint16_t type);
+    void VC_send_key(uint16_t txid, uint8_t *data, int verbosity, OvmsWriter* writer);
+    void VC_IncomingFrame(uint16_t type, uint8_t* data);
+    static void shell_variant_coding_start(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
+    static void shell_variant_coding_stop(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
+    static void shell_variant_coding_get_seed(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
+    static void shell_variant_coding_send_key(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
+    static void shell_variant_coding_get_data(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
+    static void shell_variant_coding_set_data(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
+    static void shell_variant_coding_ecu_reset(int verbosity, OvmsWriter* writer, OvmsCommand* cmd, int argc, const char* const* argv);
+  
   protected:
     poll_vector_t       m_poll_vector;              // List of PIDs to poll
     

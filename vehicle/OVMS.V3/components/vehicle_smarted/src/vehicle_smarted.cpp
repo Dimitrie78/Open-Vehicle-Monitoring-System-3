@@ -128,6 +128,7 @@ OvmsVehicleSmartED::OvmsVehicleSmartED() : smarted_obd_rxwait(1,1) {
 
   // init OBD2 poller:
   ObdInitPoll();
+  VCInit();
   DTCPollInit();
 
   ConfigChanged(NULL);
@@ -702,6 +703,12 @@ void OvmsVehicleSmartED::IncomingFrameCan1(CAN_frame_t* p_frame) {
         mt_dt_ioc_hv->SetValue(d[4] * 0.5);
       }
       // ESP_LOGD(TAG, "%03x 8 %02x %02x %02x %02x %02x %02x %02x %02x", p_frame->MsgID, d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]);
+      break;
+    }
+    case 0x7ED:
+    case 0x783:
+    {
+      VC_IncomingFrame(p_frame->MsgID, p_frame->data.u8);
       break;
     }
     default: {
